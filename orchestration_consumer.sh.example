@@ -1,0 +1,69 @@
+#!/bin/bash
+
+CONSUMER_DIR="consumer"
+
+FILES=(
+  "consumer_trade.py"
+  "consumer_quote.py"
+  "consumer_foreign_room.py"
+  "consumer_index.py"
+  "consumer_securities_status.py"
+)
+
+run_consumer() {
+    local file=$1
+    local term_num=$2
+    local base_name=$(basename "$file" .py)
+
+    echo "Starting Terminal $term_num: $base_name"
+
+    gnome-terminal --title="Consumer-$base_name" -- bash -c "
+        trap '
+            echo -e \"\nConsumer $base_name stopped manually by Ctrl+C\" | tee -a logs/${base_name}_ctrlC_\$(date +%F_%H-%M-%S).log;
+            echo \"Consumer $base_name was manually stopped (Ctrl+C)\" | mail -s \"Consumer $base_name stopped manually\" example@gmail.com;
+            exit 130
+        ' SIGINT
+
+        echo '========================================';
+        echo '    TERMINAL $term_num: $base_name';
+        echo '========================================';
+        echo '';
+        source venv/bin/activate;
+        echo 'Virtual environment ACTIVATED!';
+        echo 'STARTING $file...';
+
+        mkdir -p logs
+        LOG_FILE=\"logs/${base_name}_\$(date +%F_%H-%M-%S).log\"
+
+        python $CONSUMER_DIR/$file 2>&1 | tee -a \$LOG_FILE
+        EXIT_CODE=\${PIPESTATUS[0]}
+
+        if [ \$EXIT_CODE -ne 0 ]; then
+            echo 'Detected consumer failure for $base_name, sending email...'
+            echo -e \"Consumer $base_name has stopped unexpectedly (exit code: \$EXIT_CODE).\\n\\nCheck log: \$LOG_FILE\" | mail -s \"Consumer $base_name stopped (error)\" example@gmail.com
+        fi
+
+        echo 'Consumer $base_name STOPPED';
+        exec bash
+    "
+}
+
+
+echo "Checking environment..."
+if [ ! -d "venv" ]; then
+    echo "ERROR: venv directory not found!"
+    exit 1
+fi
+
+echo "venv found!"
+echo "Consumers to start: ${FILES[*]}"
+echo ""
+
+
+for i in "${!FILES[@]}"; do
+    run_consumer "${FILES[$i]}" $((i+1))
+    sleep 2
+done
+
+echo ""
+echo "ALL CONSUMER TERMINALS STARTED SUCCESSFULLY!"

@@ -1,0 +1,14 @@
+FROM flink:1.20-scala_2.12
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    python3 python3-pip python3.10-dev \
+    iputils-ping dnsutils && \
+    ln -sf /usr/bin/python3 /usr/bin/python && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir apache-flink==1.20.3
+
+RUN PYFLINK_LIB_DIR=$(python3 -c "import pyflink, os; print(os.path.dirname(pyflink.__file__))")/lib && \
+    cp $PYFLINK_LIB_DIR/*.jar /opt/flink/lib/
+

@@ -1,0 +1,35 @@
+# Data Processing & Math
+numpy
+pandas
+scipy
+python-dateutil==2.8.2
+
+# Database & SQL
+sqlalchemy
+psycopg2-binary
+
+# Big Data & Streaming
+pyspark==3.5.1
+apache-flink==2.1.0
+kafka-python==2.1.1
+apache-beam
+
+# Machine Learning & AI
+scikit-learn
+tensorflow
+keras
+h5py
+
+# Web Scraping & Automation
+requests
+selenium==4.8.0
+beautifulsoup4
+
+# Visualization & UI
+plotly
+tqdm
+ipywidgets
+
+
+jupyterlab
+notebook

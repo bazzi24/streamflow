@@ -1,0 +1,33 @@
+[project]
+name = "streamflow"
+version = "0.1.0"
+description = "Real-time Data Pipeline using Spark, Kafka, Postgres"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "requests",
+    "pandas",
+    "sqlalchemy",
+    "psycopg2-binary",
+    "kafka-python==2.1.1",
+    "apache-flink==2.1.0",
+    "selenium==4.8.0",
+    "beautifulsoup4",
+    "tqdm",
+    "pyspark==3.5.1",
+    "python-dateutil==2.8.2",
+    "numpy",
+    "scikit-learn",
+    "tensorflow",
+    "plotly",
+    "setuptools",
+    "python-dotenv>=1.2.1",
+    "ssi-fc-data>=2.2.2",
+]
+
+[dependency-groups]
+dev = [
+    "black",
+    "ipykernel",
+    "jupyterlab",
+]

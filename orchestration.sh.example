@@ -1,0 +1,70 @@
+#!/bin/bash
+
+PYTHON_SCRIPT="fc_data_streaming/producer_market_data.py"
+
+CHANNELS=("X-TRADE:ALL" "X-QUOTE:ALL" "R:ALL" "MI:ALL" "F:ALL")
+
+run_producer() {
+    local channel=$1
+    local term_num=$2
+
+    echo "Starting Terminal $term_num: $channel"
+
+    gnome-terminal --title="Producer-$channel" -- bash -c "
+        trap '
+            echo -e \"\nProducer $channel stopped manually by Ctrl+C\" | tee -a logs/${channel//:/_}_ctrlC_\$(date +%F_%H-%M-%S).log;
+            echo \"Producer $channel was manually stopped (Ctrl+C)\" | mail -s \"Producer $channel stopped manually\" example@gmail.com;
+            exit 130
+        ' SIGINT
+
+        echo '========================================';
+        echo '    TERMINAL $term_num: $channel';
+        echo '========================================';
+        echo '';
+        source venv/bin/activate;
+        echo 'Virtual environment ACTIVATED!';
+        echo 'STARTING PYTHON SCRIPT for $channel...';
+
+        LOG_FILE=\"logs/${channel//:/_}_\$(date +%F_%H-%M-%S).log\"
+        mkdir -p logs
+
+        python $PYTHON_SCRIPT \"$channel\" 2>&1 | tee -a \$LOG_FILE
+        EXIT_CODE=\${PIPESTATUS[0]}
+
+        if grep -q 'Connection to remote host was lost' \"\$LOG_FILE\" || [ \$EXIT_CODE -ne 0 ]; then
+            echo 'Detected producer failure for $channel, sending email...'
+            echo -e \"Producer $channel has stopped or lost connection.\n\nCheck log: \$LOG_FILE\" | mail -s \"Producer $channel stopped (error)\" example@gmail.com
+        fi
+
+        echo 'Producer $channel STOPPED';
+        exec bash
+    "
+}
+
+echo " Checking environment..."
+if [ ! -d "venv" ]; then
+    echo "ERROR: venv directory not found!"
+    exit 1
+fi
+
+if [ ! -f "$PYTHON_SCRIPT" ]; then
+    echo "ERROR: $PYTHON_SCRIPT not found!"
+    exit 1
+fi
+
+echo "venv and $PYTHON_SCRIPT found!"
+echo "Channels to start: ${CHANNELS[*]}"
+echo ""
+
+
+for i in "${!CHANNELS[@]}"; do
+    run_producer "${CHANNELS[$i]}" $((i+1))
+    sleep 2  
+done
+
+echo ""
+echo "ALL 5 TERMINALS STARTED SUCCESSFULLY!"
+echo "Each terminal will show:"
+echo "   ACTIVATING VIRTUAL ENVIRONMENT..."
+echo "   Channel selected: X-TRADE:ALL"
+echo "   >> (ready for input)"

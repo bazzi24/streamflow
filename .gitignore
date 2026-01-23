@@ -215,3 +215,4 @@ kafka_data/*
 etl/featureML.py
 dataSSI/*.log
 dataSSI/*.csv
+machine_learning/models/*.h5
