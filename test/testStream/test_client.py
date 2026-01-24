@@ -2,7 +2,18 @@ import os
 import pandas as pd
 from datetime import datetime
 from ssi_fc_data import fc_md_client, model
-import config
+from dotenv import load_dotenv
+# import config
+
+load_dotenv()
+
+config = {
+    "auth_type": os.getenv("auth_type"),
+    "consumerID": os.getenv("consumerID"),
+    "consumerSecret": os.getenv("consumerSecret"),
+    "url": os.getenv("url"),
+    "stream_url": os.getenv("stream_url")
+}
 
 client = fc_md_client.MarketDataClient(config)
 
@@ -151,7 +162,6 @@ def main():
         elif value == "19":
             md_get_all_securities()
         elif value == "0":
-            print("Bye 👋")
             break
         else:
             print("Invalid choice!")

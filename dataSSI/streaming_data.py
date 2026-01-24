@@ -1,5 +1,4 @@
 # import ssi_fc_data
-import config
 import json
 from ssi_fc_data.fc_md_stream import MarketDataStream
 from ssi_fc_data.fc_md_client import MarketDataClient

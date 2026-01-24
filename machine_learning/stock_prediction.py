@@ -8,13 +8,16 @@ from keras.models import Sequential, load_model
 from keras.layers import LSTM, Dense, Dropout
 from keras import backend as K
 import gc, os, datetime
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 def create_sequences(data, seq_length):
     X, y = [], []
     for i in range(len(data) - seq_length):
         X.append(data[i:(i + seq_length), :])
-        y.append(data[i + seq_length, 0])  # dự đoán last_price
+        y.append(data[i + seq_length, 0])  
     return np.array(X), np.array(y)
 
 
@@ -25,11 +28,11 @@ def train_and_predict_incremental():
         .config("spark.driver.memory", "6g") \
         .getOrCreate()
 
-    db_url = "jdbc:postgresql://localhost:5432/stock_ml"
+    db_url = os.getenv("DB_URL")
     db_props = {
-        "user": "bazzi",
-        "password": "bazzi123",
-        "driver": "org.postgresql.Driver"
+        "user": os.getenv("DB_USER"),
+        "password": os.getenv("DB_PASSWORD"),
+        "driver": os.getenv("DB_DRIVER")
     }
 
     
@@ -39,7 +42,7 @@ def train_and_predict_incremental():
     pandas_df['tradingdate'] = pd.to_datetime(pandas_df['tradingdate'])
     pandas_df = pandas_df.sort_values(by=['symbol', 'tradingdate'])
 
-    # Đọc bảng model_info nếu có
+    
     try:
         model_info_df = spark.read.jdbc(url=db_url, table="ml_data.model_info", properties=db_props).toPandas()
     except Exception:
@@ -64,13 +67,13 @@ def train_and_predict_incremental():
 
         model_path = f"models/LSTM_{symbol}.h5"
 
-        # Kiểm tra model cũ
+        
         if symbol in model_info_df['symbol'].values:
             last_train_date = pd.to_datetime(model_info_df.loc[model_info_df['symbol'] == symbol, 'last_train_date'].values[0])
         else:
             last_train_date = None
 
-        # Nếu đã có model và dữ liệu mới hơn
+        
         if last_train_date and os.path.exists(model_path):
             print(f"Đang load model cũ cho {symbol} (đã train tới {last_train_date.date()})")
             model = load_model(model_path)
@@ -85,12 +88,12 @@ def train_and_predict_incremental():
             model.compile(optimizer='adam', loss='mean_squared_error')
             symbol_new_df = symbol_df.copy()
 
-        # Nếu không có dữ liệu mới thì bỏ qua
+        
         if symbol_new_df.empty:
             print(f"{symbol}: Không có dữ liệu mới, bỏ qua.")
             continue
 
-        # Chuẩn hóa dữ liệu
+       
         scaler = MinMaxScaler(feature_range=(0, 1))
         scaled_data = scaler.fit_transform(symbol_df[features].values)
 
@@ -99,9 +102,8 @@ def train_and_predict_incremental():
         if len(X) == 0:
             continue
 
-        # Nếu là incremental thì chỉ train với phần mới
         if last_train_date:
-            # tìm index bắt đầu phần mới
+            
             idx_start = len(symbol_df[symbol_df['tradingdate'] <= last_train_date])
             if idx_start < len(scaled_data) - seq_len:
                 X_new, y_new = create_sequences(scaled_data[idx_start:], seq_len)
