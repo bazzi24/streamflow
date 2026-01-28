@@ -15,19 +15,19 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       
-      # --- Metadata & log ---
+      
       KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
 
-      # --- Cluster initialization ---
+      
       KAFKA_CLUSTER_ID: "kafka-cluster-1"
 
-      # --- Internal topic replication (vì chỉ có 1 node) ---
+      
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_MIN_INSYNC_REPLICAS: 1
 
-      # --- Optional tuning ---
+      
       KAFKA_NUM_PARTITIONS: 3
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
 
@@ -73,3 +73,35 @@ services:
         jobmanager.rpc.address: flink-jobmanager
     volumes:
       - ./usrlib:/opt/flink/usrlib
+
+  mysql:
+    # mysql:5.7 linux/arm64 image is unavailable.
+    image: mysql:8.0.39
+    env_file: .env
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_PASSWORD}
+    command:
+      --max_connections=1000
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --default-authentication-plugin=mysql_native_password
+      --tls_version="TLSv1.2,TLSv1.3"
+      --init-file /data/application/init.sql
+      --binlog_expire_logs_seconds=604800
+    ports:
+      - ${EXPOSE_MYSQL_PORT}:3306
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init.sql:/data/application/init.sql
+    networks:
+      - ragflow
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-uroot", "-p${MYSQL_PASSWORD}"]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+    restart: unless-stopped
+    
+volumes:
+  mysql:
+    driver: local
