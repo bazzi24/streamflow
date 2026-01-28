@@ -31,8 +31,6 @@ services:
       KAFKA_NUM_PARTITIONS: 3
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
 
-    volumes:
-      - ./kafka_data:/tmp/kraft-combined-logs
     restart: unless-stopped
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
@@ -56,8 +54,6 @@ services:
       - |
         FLINK_PROPERTIES=
         jobmanager.rpc.address: flink-jobmanager
-    volumes:
-      - ./usrlib:/opt/flink/usrlib
 
   flink-taskmanager:
     build:
@@ -71,8 +67,7 @@ services:
       - |
         FLINK_PROPERTIES=
         jobmanager.rpc.address: flink-jobmanager
-    volumes:
-      - ./usrlib:/opt/flink/usrlib
+    
 
   mysql:
     # mysql:5.7 linux/arm64 image is unavailable.
@@ -93,8 +88,6 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
       - ./init.sql:/data/application/init.sql
-    networks:
-      - ragflow
     healthcheck:
       test: ["CMD", "mysqladmin" ,"ping", "-uroot", "-p${MYSQL_PASSWORD}"]
       interval: 10s
@@ -104,4 +97,12 @@ services:
     
 volumes:
   mysql:
+    driver: local
+  kafka:
+    driver: local
+  kafka-ui:
+    driver: local
+  flink-jobmanager:
+    driver: local
+  flink-taskmanager:
     driver: local
