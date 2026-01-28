@@ -216,3 +216,4 @@ etl/featureML.py
 dataSSI/*.log
 dataSSI/*.csv
 machine_learning/models/*.h5
+kafkaStream/flink_candlestick_1m.py
