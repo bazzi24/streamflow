@@ -15,6 +15,80 @@
 - **Frameworks/Libraries:** Numpy, Selenium, BeutifulSoup, Requests, Pandas, Kafka, Docker, Spark, Flink.
 - **Databases:** PostgreSQL.
 
+## File Tree: StreamFlow
+
+
+```
+├── 📁 consumer
+│   ├── 🐍 __init__.py
+│   ├── 🐍 base_consumer.py
+│   ├── 🐍 dataQuote.py
+│   ├── 🐍 dataTrade.py
+│   ├── 🐍 foreignRoom.py
+│   ├── 🐍 index.py
+│   └── 🐍 securitiesStatus.py
+├── 📁 data
+├── 📁 dataSSI
+│   ├── 🐍 __init__.py
+│   ├── 🐍 client.py
+│   ├── 🐍 crawlSector.py
+│   ├── 🐍 initialDataLoad.py
+│   ├── 🐍 pushSectorPsql.py
+│   └── 🐍 streaming_data.py
+├── 📁 docker
+│   ├── 📁 scriptDB
+│   │   ├── 📄 script_create_db_psql.txt
+│   │   ├── 📄 script_create_dw.txt
+│   │   └── 📄 train_tick_by_tic.txt
+│   ├── ⚙️ .env.example
+│   ├── 🐳 Dockerfile
+│   ├── 📄 Dockerfile.flink
+│   ├── ⚙️ docker-compose.yaml
+│   ├── 📄 init.sql
+│   └── ⚙️ streamflow_conf.toml
+├── 📁 etl
+│   ├── 🐍 __init__.py
+│   ├── 🐍 dimDate.py
+│   ├── 🐍 dimExchange.py
+│   ├── 🐍 dimIndex.py
+│   ├── 🐍 dimSession.py
+│   ├── 🐍 dimSymbol.py
+│   ├── 🐍 dimTime.py
+│   ├── 🐍 factMarketIndex.py
+│   ├── 🐍 factQuote.py
+│   └── 🐍 factTrade.py
+├── 📁 kafkaStream
+│   ├── 🐍 __init__.py
+│   └── 🐍 producer_market_data.py
+├── 📁 logs
+├── 📁 machine_learning
+│   ├── 📁 models
+│   └── 🐍 stock_prediction.py
+├── 📁 notebook
+│   ├── 📄 index_vizualization.ipynb
+│   └── 📄 symbol_vizualization.ipynb
+├── 📁 orchestration
+│   ├── 📄 orchestration.sh.example
+│   └── 📄 orchestration_consumer.sh.example
+├── 📁 test
+│   ├── 📁 testFlink
+│   │   └── 🐍 test_flink.py
+│   ├── 📁 testML
+│   │   └── 🐍 test.py
+│   └── 📁 testStream
+│       ├── 🐍 test_client.py
+│       └── 🐍 test_stream.py
+├── ⚙️ .env.example
+├── ⚙️ .gitattributes
+├── ⚙️ .gitignore
+├── 📄 LICENSE
+├── 📝 README.md
+├── ⚙️ pyproject.toml
+└── 📄 requirements.txt
+```
+
+
+
 ## Setting
 
 1. Clone repository
