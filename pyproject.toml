@@ -23,6 +23,12 @@ dependencies = [
     "setuptools",
     "python-dotenv>=1.2.1",
     "ssi-fc-data>=2.2.2",
+    "strenum>=0.4.15",
+    "quart>=0.20.0",
+    "quart-auth>=0.11.0",
+    "itsdangerous>=2.2.0",
+    "peewee>=3.19.0",
+    "xxhash>=3.6.0",
 ]
 
 [dependency-groups]
