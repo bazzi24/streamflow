@@ -88,9 +88,7 @@ def md_get_stock_price():
     save_to_csv(resp, "daily_stock_price")
 
 def md_get_all_securities():
-    """Lấy toàn bộ danh sách chứng khoán HOSE + HNX"""
     
-
     markets = ["HOSE", "HNX", "UPCOM"]
     all_rows = []
 

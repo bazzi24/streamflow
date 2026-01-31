@@ -36,7 +36,7 @@ def train_and_predict_incremental():
     }
 
     
-    print("Đang đọc dữ liệu từ ml_data.feature_data ...")
+    print("Reading data from ml_data.feature_data ...")
     feature_df = spark.read.jdbc(url=db_url, table="ml_data.feature_data", properties=db_props)
     pandas_df = feature_df.toPandas()
     pandas_df['tradingdate'] = pd.to_datetime(pandas_df['tradingdate'])
@@ -53,16 +53,16 @@ def train_and_predict_incremental():
         'change', 'ratio_change', 'highest', 'lowest'
     ]
 
-    print(f"🔹 Số lượng symbol: {pandas_df['symbol'].nunique()}")
+    print(f"Quantity symbol: {pandas_df['symbol'].nunique()}")
     all_target, prediction_log, model_info_list = pd.DataFrame(), pd.DataFrame(), []
 
     
     for symbol in pandas_df['symbol'].unique():
         symbol_df = pandas_df[pandas_df['symbol'] == symbol].copy()
-        print(f"\nXử lý symbol: {symbol} ({len(symbol_df)} dòng)")
+        print(f"\nHandle symbol: {symbol} ({len(symbol_df)} dòng)")
 
         if len(symbol_df) < 3:
-            print(f"{symbol}: Dữ liệu quá ít, bỏ qua.")
+            print(f"{symbol}: There's too little data, ignore it..")
             continue
 
         model_path = f"models/LSTM_{symbol}.h5"
@@ -75,7 +75,7 @@ def train_and_predict_incremental():
 
         
         if last_train_date and os.path.exists(model_path):
-            print(f"Đang load model cũ cho {symbol} (đã train tới {last_train_date.date()})")
+            print(f"Loading the old model for {symbol} (already trained to {last_train_date.date()})")
             model = load_model(model_path)
             symbol_new_df = symbol_df[symbol_df['tradingdate'] > last_train_date]
         else:
@@ -90,7 +90,7 @@ def train_and_predict_incremental():
 
         
         if symbol_new_df.empty:
-            print(f"{symbol}: Không có dữ liệu mới, bỏ qua.")
+            print(f"{symbol}: No new data, skip..")
             continue
 
        
@@ -107,12 +107,12 @@ def train_and_predict_incremental():
             idx_start = len(symbol_df[symbol_df['tradingdate'] <= last_train_date])
             if idx_start < len(scaled_data) - seq_len:
                 X_new, y_new = create_sequences(scaled_data[idx_start:], seq_len)
-                print(f"Huấn luyện nối tiếp với {len(X_new)} mẫu mới.")
+                print(f"Sequential training with the new {len(X_new)} sample.")
                 model.fit(X_new, y_new, epochs=5, batch_size=1, verbose=0)
             else:
-                print(f"Không đủ dữ liệu mới để huấn luyện {symbol}.")
+                print(f"Insufficient new data for training. {symbol}.")
         else:
-            print(f"Huấn luyện model mới cho {symbol}")
+            print(f"Training new models for {symbol}")
             model.fit(X, y, epochs=15, batch_size=1, verbose=0)
 
         
@@ -155,13 +155,13 @@ def train_and_predict_incremental():
         # Lưu lại model
         os.makedirs("models", exist_ok=True)
         model.save(model_path, overwrite=True)
-        print(f"Model {symbol} đã được lưu tại {model_path}")
+        print(f"Model {symbol} has been saved at {model_path}")
 
         K.clear_session()
         gc.collect()
 
    
-    print("\nGhi dữ liệu vào PostgreSQL...")
+    print("\nPush data to PSQL...")
 
     if not all_target.empty:
         spark.createDataFrame(all_target).write.jdbc(
@@ -176,7 +176,7 @@ def train_and_predict_incremental():
             url=db_url, table="ml_data.model_info", mode="overwrite", properties=db_props
         )
 
-    print("Đã cập nhật các bảng: target_data, prediction_log, model_info")
+    print("The following tables have been updated: target_data, prediction_log, model_info")
     spark.stop()
 
 if __name__ == "__main__":
