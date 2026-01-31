@@ -85,4 +85,59 @@ class SerializedField(LongTextField):
         else:
             raise ValueError(f"The serialized type {self._serialized_type} is not supported") 
            
-            
+def is_continuouse_field(cls: typing.Type) -> bool:
+    if cls in CONTINUOUS_FIELD_TYPE:
+        return True
+    for p in cls.__base__:
+        if p in CONTINUOUS_FIELD_TYPE:
+            return True
+        elif p is not Field and p is not object:
+            if is_continuouse_field(p):
+                return True
+    else:
+        return False
+
+def auto_date_timestamp_field():
+    return {f"f_{f}_time" for f in AUTO_DATE_TIMESTAMP_FIELD_PREFIX}
+
+def auto_date_timestamp_db_field():
+    return {f"f_{f}_time" for f in AUTO_DATE_TIMESTAMP_FIELD_PREFIX}
+
+def remove_field_name_prefix(field_name):
+    return field_name[2:] if field_name.startswith("f_") else field_name 
+
+class BaseModel(Model):
+    create_time = BigIntegerField(null=True, index=True)
+    create_date = DateTimeField(null=True, index=True)
+    update_time = BigIntegerField(null=True, index=True)
+    update_date = DateTimeField(null=True, index=True)
+    
+    def to_dict(self):
+        return self.__dict__["__data__"]
+    
+    def to_json(self):
+        return self.to_dict()
+    
+    def to_human_model_dict(self, only_primary_with: list = None):
+        model_dict = self.__dict__["__data__"]
+        if not only_primary_with:
+            return {remove_field_name_prefix(k): v for k, v in model_dict.items()}
+        
+        human_model_dict = {}
+        for k in self.__meta.primary_key.field_names:
+            human_model_dict[remove_field_name_prefix(k)] = model_dict[k]
+        for k in only_primary_with:
+            human_model_dict[k] = model_dict[f"f_{k}"]
+        return human_model_dict
+    
+    @property
+    def meta(self) -> Metadata:
+        return self._meta 
+    
+    @classmethod
+    def get_primary_keys_name(cls):
+        return cls._meta.primary_key.field_names if isinstance(cls._meta.primary_key, CompositeKey) else [cls._meta.primary_key.name]
+    
+    @classmethod
+    def getter_by(cls, attr):
+        return operator.attrgetter(attr)(cls)
