@@ -180,3 +180,24 @@ class BaseModel(Model):
             return [query_records for query_record in query_records]
         else:
             return []    
+        
+    @classmethod
+    def insert(cls, __data=None, **insert):
+        if isinstance(__data, dict) and __data:
+            __data[cls._meta.combined["create_time"]] = current_timestamp()
+        if insert:
+            insert["create_time"] = current_timestamp()
+        return super().insert(__data, **insert)
+    
+    @classmethod
+    def _normalize_data(cls, data, kwargs):
+        normalized = super()._normalize_data(data, kwargs)
+        if not normalized:
+            return {}
+        normalized[cls._meta.combined["update_time"]] = current_timestamp()
+        
+        for f_n in AUTO_DATE_TIMESTAMP_FIELD_PREFIX:
+            if {f"{f_n}_time", f"{f_n}_date"}.issubset(cls._meta.combined.keys()) and cls._meta.combined[f"{f_n}_time"] in normalized[cls._meta.combined[f"{f_n}_time"]] is not None:
+                normalized[cls._meta.combined[f"{f_n}_date"]] = timestamp_to_date(normalized[cls._meta.combined[f"{f_n}_time"]])
+                
+        return normalized
