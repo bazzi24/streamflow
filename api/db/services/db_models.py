@@ -307,3 +307,28 @@ def with_retry(max_retries=3, retry_delay=1.0):
     Returns:
         decorated function
     """
+    
+    def decorator(func):
+        @wraps
+        def wrapper(*args, **kwargs):
+            for retry in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    last_exception = e
+                    self_obj = args[0] if args else None
+                    func_name = func.__name__
+                    lock_name = getattr(self_obj, "lock_name", "unknown") if self_obj else "unknown"
+                    
+                    if retry < max_retries - 1:
+                        current_delay = retry_delay * (2**retry)
+                        logging.warning(f"{func_name} {lock_name} failed: {str(e)}, retrying ({retry + 1}/{max_retries})")
+                        time.sleep(current_delay)
+                    else:
+                        logging.error(f"{func_name} {lock_name} failed after all attempt: {str(e)}")
+                        
+            if last_exception:
+                raise last_exception
+            return False
+        return wrapper
+    return decorator
