@@ -504,8 +504,22 @@ class CEO(DatabaseModel):
     class Meta:
         db_table = "ceo"
         
-
+class IndexList(DatabaseModel):
+    idINdexList = AutoField(primary_key=True)
     
+    idMarket = ForeignKeyField(
+        Market,
+        backref="idMarket",
+        related_name="idSymbol",
+    )
+    
+    indexName = CharField(max_length=100, null=False, help_text="index name", index=True)
+    indexEnName = CharField(max_length=100, null=False, help_text="index english name", index=True)    
+
+    class Meta:
+        db_table = "indexlist"
+        
+
     
 
         
