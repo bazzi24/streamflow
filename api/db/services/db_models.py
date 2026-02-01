@@ -201,3 +201,53 @@ class BaseModel(Model):
                 normalized[cls._meta.combined[f"{f_n}_date"]] = timestamp_to_date(normalized[cls._meta.combined[f"{f_n}_time"]])
                 
         return normalized
+    
+class JsonSerializedField(SerializedField):
+    def __init__(self, object_hook=utils.from_dict_hook, object_pairs_hook=None, **kwargs):
+        super(JsonSerializedField, self).__init__(serialized_type=SerializedType.JSON, object_hook=object_hook, object_pairs_hook=object_pairs_hook, **kwargs)
+        
+class RetryingPoolMySQLDatabase(PooledMySQLDatabase):
+    def __init__(self, *args, **kwargs):
+        self.max_retries = kwargs.pop("max_retries", 5)
+        self.retry_delay = kwargs.pop("retry_delay", 1)
+        super().__init__(*args, **kwargs)
+        
+    def execute_sql(self, sql, params=None, commit=True):
+        for attempt in range(self.max_retries + 1):
+            try:
+                return super().execute_sql(sql, params, commit)
+            except (OperationalError, IndentationError) as e:
+                error_codes = [2013, 2006]
+                error_message = ['', 'Lost connection']
+                should_retry = (
+                    (hasattr(e, 'args') and e.args and e.args[0] in error_codes) or
+                    (str(e) in error_message) or
+                    (hasattr(e, '__class__') and e.__class__.__name__ == 'InterfaceError')
+                )
+                
+                if should_retry and attempt < self.max_retries:
+                    logging.warning(
+                        f"Database connection issue (attempt {attempt+1}/{self.max_retries}): {e}"
+                    )
+                    self._handle_connection_loss()
+                    time.sleep(self.retry_delay * (2 ** attempt))
+                else:
+                    logging.error(f"Database execution failure: {e}")
+                    raise
+        return None
+    
+    def _handle_connection_loss(self):
+        try:
+            self.close()
+        except Exception:
+            pass
+        try:
+            self.connect()
+        except Exception as e:
+            logging.error(f"Failed to reconnect: {e}")
+            time.sleep(0.2)
+            try:
+                self.connect()
+            except Exception as e2:
+                logging.error(f"Fail to reconnect on second attempt: {e2}")
+                raise
