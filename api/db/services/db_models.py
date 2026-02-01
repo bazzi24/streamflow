@@ -273,4 +273,37 @@ class RetryingPoolMySQLDatabase(PooledMySQLDatabase):
                     time.sleep(self.retry_delay * (2 ** attempt))
                 else:
                     raise
-        return None 
+        return None
+    
+    
+class PooledDatabase(Enum):
+    MYSQL = RetryingPoolMySQLDatabase
+    
+@singleton
+class BaseDatabase:
+    def __init__(self):
+        database_config = setting.DATABASE.copy()
+        db_name = database_config.pop("name")
+        
+        pool_config = {
+            'max_retries': 5,
+            'retry_delay': 1
+        }
+        
+        database_config.update(pool_config)
+        self.database_connection = PooledDatabase[setting.DATABASE_TYPE.upper()].value(
+            db_name, **database_config
+        )
+        
+        logging.info("init database on cluster mode successfully")
+        
+def with_retry(max_retries=3, retry_delay=1.0):
+    """Decorator: Add retry mechanism to database operations
+
+    Args:
+        max_retries (int): maximum number of retries
+        retry_delay (float): initial retry delay (seconds), will increase exponentially
+
+    Returns:
+        decorated function
+    """
