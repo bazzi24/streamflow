@@ -422,17 +422,17 @@ def init_database_tables(alter_fields=[]):
     if create_failed_list:
         logging.error(f"create tables failed: {create_failed_list}")
         raise Exception(f"create tables failed: {create_failed_list}")
-    # migrate_db()
+    migrate_db()
     
 class User(DatabaseModel, AuthUser):
-    id = CharField(max_length=32, primary_key=True)
+    idUser = CharField(max_length=32, primary_key=True)
     nickname = CharField(max_length=100, null=False, help_text="nicky name", index=True)
-    password = CharField(max_length=255, null=True, help_text="password", index=True)
+    password = CharField(max_length=255, null=False, help_text="password", index=True)
     email = CharField(max_length=255, null=False, help_text="email", index=True)
     last_login_time = DateTimeField(null=True, index=True)
-    is_authenticated = CharField(max_length=1, null=False, default="1", index=True)
-    is_active = CharField(max_length=1, null=False, default="1", index=True)
-    is_superuser = BooleanField(null=True, help_text="is root", default=False, index=True)
+    isAuthenticated = CharField(max_length=1, null=False, default="1", index=True)
+    isActive = CharField(max_length=1, null=False, default="1", index=True)
+    isSuperuser = BooleanField(null=True, help_text="is root", default=False, index=True)
     
     def __str__(self):
         return self.email
@@ -440,7 +440,45 @@ class User(DatabaseModel, AuthUser):
     class Meta:
         db_table = "user"
         
-                    
+class Market(DatabaseModel):
+    idMarket = AutoField(primary_key=True)
+    marketName = CharField(max_length=255, null=False, help_text="market name", index=True)
+    
+    class Meta:
+        db_table = "market"
+        
+class Sector(DatabaseModel):
+    idSector = AutoField(primary_key = True)
+    sectorName = CharField(max_length=255, null=False, help_text="sector name", index=True)
+    
+    class Meta:
+        db_table = "sector"
+        
+class Corporation(DatabaseModel):
+    idCorp = CharField(max_length=32, null=False, index=True)
+    
+    idSector = ForeignKeyField(
+        Sector,
+        backref="corporation",
+        on_delete="CASCADE",
+        constraint_name="idSector"
+    )
+    
+    idMarket = ForeignKeyField(
+        Market,
+        backref="corporation",
+        constraint_name="idMarket",
+    )
+    
+    symbolName = CharField(max_length=255, null=False, help_text="symbol name", index=True)
+    symbolEnName = CharField(max_length=255, null=True, help_text="symbol english name", index=True)
+
+    class Meta:
+        db_table = "corporation"
+
+        
+def migrate_db():
+    logging.disable(logging.ERROR)
                     
                     
                 
