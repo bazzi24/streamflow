@@ -10,6 +10,7 @@ import typing
 from datetime import datetime, timezone
 from enum import Enum
 from functools import wraps
+from peewee import *
 
 from quart_auth import AuthUser
 from itsdangerous.url_safe import URLSafeTimedSerializer as Serializer
@@ -377,11 +378,6 @@ class MySQLDatabaseLock:
             with self:
                 return func(*args, **kwargs)
         return magic
-    
-        
-        
-        
-        
         
 class DatabaseLock(Enum):
     MYSQL = MySQLDatabaseLock
@@ -389,3 +385,62 @@ class DatabaseLock(Enum):
         
 DB = BaseDatabase().database_connection
 DB.lock = DatabaseLock[setting.DATABASE_TYPE.upper()].value
+
+def close_connection():
+    try:
+        if DB:
+            DB.close_stale(age=30)
+    except Exception as e:
+        logging.exception(e)
+        
+class DatabaseModel(BaseDatabase):
+    class Meta:
+        database = DB
+        
+
+@DB.connection_context()
+@DB.lock("init_database_tables", 60)
+def init_database_tables(alter_fields=[]):
+    members = inspect.getmembers(sys.modules[__name__], inspect.isclass)
+    table_objs = []
+    create_failed_list = []
+    for name, obj in members:
+        if obj != DatabaseModel and issubclass(obj, DatabaseModel):
+            table_objs.append(obj)
+
+            if not obj.table_exists():
+                logging.debug(f"start create table {obj.__name__}")
+                try:
+                    obj.create_table(safe=True)
+                    logging.debug(f"create table success: {obj.__name__}")
+                except Exception as e:
+                    logging.exception(e)
+                    create_failed_list.append(obj.__name__)
+            else:
+                logging.debug(f"table {obj.__name__} already exists, skip creation.")
+
+    if create_failed_list:
+        logging.error(f"create tables failed: {create_failed_list}")
+        raise Exception(f"create tables failed: {create_failed_list}")
+    # migrate_db()
+    
+class User(DatabaseModel, AuthUser):
+    id = CharField(max_length=32, primary_key=True)
+    nickname = CharField(max_length=100, null=False, help_text="nicky name", index=True)
+    password = CharField(max_length=255, null=True, help_text="password", index=True)
+    email = CharField(max_length=255, null=False, help_text="email", index=True)
+    last_login_time = DateTimeField(null=True, index=True)
+    is_authenticated = CharField(max_length=1, null=False, default="1", index=True)
+    is_active = CharField(max_length=1, null=False, default="1", index=True)
+    is_superuser = BooleanField(null=True, help_text="is root", default=False, index=True)
+    
+    def __str__(self):
+        return self.email
+    
+    class Meta:
+        db_table = "user"
+        
+                    
+                    
+                    
+                
