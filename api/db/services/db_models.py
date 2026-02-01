@@ -332,3 +332,60 @@ def with_retry(max_retries=3, retry_delay=1.0):
             return False
         return wrapper
     return decorator
+
+
+class MySQLDatabaseLock:
+    def __init__(self, lock_name, timeout=10, db=None):
+        self.lock_name = lock_name
+        self.timeout = int(timeout)
+        self.db = db if db else DB
+    
+    @with_retry(max_retries=3, retry_delay=1.0)
+    def lock(self):
+        cursor = self.db.execute_sql("SELECT GET_LOCK(%s, %s)", (self.lock_name), (self.timeout))
+        ret = cursor.fetchone()
+        if ret[0] == 0:
+            raise Exception(f"Acquire mysql lock {self.lock_name} timeout")
+        elif ret[0] == 1:
+            return True
+        else:
+            raise Exception(f"failed to acquire lock {self.lock_name}")
+        
+    @with_retry
+    def unlock(self):
+        cursor = self.db.execute_sql("SELECT RELEASE_LOCK(%s)", (self.lock_name))
+        ret = cursor.fetchone()
+        if ret[0] == 0:
+            raise Exception(f"MySQL lock {self.lock_name} was not established by this thread")
+        elif ret[0] == 1:
+            return True
+        else:
+            raise Exception(f"MySQL lock {self.lock_name} does not exists")
+        
+    def __enter__(self):
+        if isinstance(self.db, PooledMySQLDatabase):
+            self.lock()
+        return self
+    
+    def __exit__(self, exec_type, exec_val, exec_tb):
+        if isinstance(self.db, PooledMySQLDatabase):
+            self.unlock()
+            
+    def __call__(self, func):
+        @wraps(func)
+        def magic(*args, **kwargs):
+            with self:
+                return func(*args, **kwargs)
+        return magic
+    
+        
+        
+        
+        
+        
+class DatabaseLock(Enum):
+    MYSQL = MySQLDatabaseLock
+        
+        
+DB = BaseDatabase().database_connection
+DB.lock = DatabaseLock[setting.DATABASE_TYPE.upper()].value
