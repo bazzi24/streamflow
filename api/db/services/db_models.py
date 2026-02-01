@@ -455,19 +455,19 @@ class Sector(DatabaseModel):
         db_table = "sector"
         
 class Corporation(DatabaseModel):
-    idCorp = CharField(max_length=32, null=False, index=True)
+    idSymbol = CharField(max_length=32, null=False, index=True)
     
     idSector = ForeignKeyField(
         Sector,
         backref="corporation",
         on_delete="CASCADE",
-        constraint_name="idSector"
+        related_name="idSector"
     )
     
     idMarket = ForeignKeyField(
         Market,
         backref="corporation",
-        constraint_name="idMarket",
+        related_name="idMarket",
     )
     
     symbolName = CharField(max_length=255, null=False, help_text="symbol name", index=True)
@@ -475,6 +475,38 @@ class Corporation(DatabaseModel):
 
     class Meta:
         db_table = "corporation"
+        
+class CorporationDetail(DatabaseModel):
+    idCorpDetail = AutoField(primary_key=True)
+    idSymbol = CharField(max_length=32, null=False, help_text="id Symbol", index=True)
+    address = CharField(max_length=255, null=True, help_text="addres corporation", index=True)
+    webURL = TextField(null=True, help_text="URL Web Corp", index=True)
+    stockType = CharField(max_length=100, null=True, help_text="Type stock", index=True)
+    listingDate = DateField(null=True, index=True)
+    delistingDate = DateField(null=True, index=True)
+    
+    class Meta:
+        db_table = "corporationDetail"
+        
+class CEO(DatabaseModel):
+    idCEO = AutoField(primary_key=True)
+    
+    idSymbol = ForeignKeyField(
+        Corporation,
+        backref="idSYmbol",
+        related_name="idSymbol"
+    )
+    
+    ceoName = CharField(max_length=255, null=False, help_text="Name CEO", index=True)
+    ceoVolume = DoubleField(default=0, index=False)
+    ceoPercent = DoubleField(default=0, index=False)
+    
+    class Meta:
+        db_table = "ceo"
+        
+
+    
+    
 
         
 def migrate_db():
