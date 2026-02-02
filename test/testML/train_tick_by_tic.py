@@ -9,6 +9,9 @@ import tensorflow as tf
 from keras.models import Sequential
 from keras.layers import LSTM, Dense, Dropout
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def create_sequences(data, sequence_length):
     X, y = [], []
@@ -29,11 +32,11 @@ def create_prediction_model_lstm():
         .config("spark.sql.debug.maxToStringFields", "2000") \
         .getOrCreate()
 
-    dw_db_url = "jdbc:postgresql://localhost:5432/data_warehouse_ssi"
+    dw_db_url = os.getenv("DW_DB_URL")
     dw_db_properties = {
-        "user": "bazzi",
-        "password": "bazzi123",
-        "driver": "org.postgresql.Driver"
+        "user": os.getenv("DB_USER"),
+        "password": os.getenv("DB_PASSWORD"),
+        "driver": os.getenv("DB_DRIVER")
     }
 
     # Load data from data warehouse
