@@ -543,6 +543,12 @@ class SymbolStatus(DatabaseModel):
     class Meta:
         db_table = "symbolStatus"
         
+class Quote(DatabaseModel):
+    idQuote = AutoField(primary_key=True)
+    
+    
+    class Meta:
+        db_table = "quote"
     
 
         
