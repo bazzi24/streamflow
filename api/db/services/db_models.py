@@ -544,11 +544,151 @@ class SymbolStatus(DatabaseModel):
         db_table = "symbolStatus"
         
 class Quote(DatabaseModel):
-    idQuote = AutoField(primary_key=True)
-    
-    
+    idQuote = BigAutoField(primary_key=True)
+    dateQuote = DateField(null=False, index=True)
+    time = TimeField(null=False)
+    exchange = CharField(max_length=50, null=False, help_text="exchange market", index=True)
+    idSymbol = CharField(max_length=50, null=False, help_text="id Symbol", index=True)
+    rType = CharField(max_length=100, null=False, help_text="type", index=True)
+    tradingSession = CharField(max_length=50, null=False, help_text="trading session", index=True)
+    askPrice1 = DoubleField(null=False)
+    askVol1 = DoubleField(null=False)
+    askPrice2 = DoubleField(null=False)
+    askVol2 = DoubleField(null=False)
+    askPrice3 = DoubleField(null=False)
+    askVol3 = DoubleField(null=False)
+    askPrice4 = DoubleField(null=False)
+    askVol4 = DoubleField(null=False)
+    askPrice5 = DoubleField(null=False)
+    askVol5 = DoubleField(null=False)
+    askPrice6 = DoubleField(null=False)
+    askVol6 = DoubleField(null=False)
+    askPrice7 = DoubleField(null=False)
+    askVol7 = DoubleField(null=False)
+    askPrice8 = DoubleField(null=False)
+    askVol8 = DoubleField(null=False)
+    askPrice9 = DoubleField(null=False)
+    askVol9 = DoubleField(null=False)
+    askPrice10 = DoubleField(null=False)
+    askVol10 = DoubleField(null=False)
+    bidPrice1 = DoubleField(null=False)
+    bidVol1 = DoubleField(null=False)
+    bidPrice2 = DoubleField(null=False)
+    bidVol2 = DoubleField(null=False)
+    bidPrice3 = DoubleField(null=False)
+    bidVol3 = DoubleField(null=False)
+    bidPrice4 = DoubleField(null=False)
+    bidVol4 = DoubleField(null=False)
+    bidPrice5 = DoubleField(null=False)
+    bidVol5 = DoubleField(null=False)
+    bidPrice6 = DoubleField(null=False)
+    bidVol6 = DoubleField(null=False)
+    bidPrice7 = DoubleField(null=False)
+    bidVol7 = DoubleField(null=False)
+    bidPrice8 = DoubleField(null=False)
+    bidVol8 = DoubleField(null=False)
+    bidPrice9 = DoubleField(null=False)
+    bidVol9 = DoubleField(null=False)
+    bidPrice10 = DoubleField(null=False)
+    bidVol10 = DoubleField(null=False)
     class Meta:
         db_table = "quote"
+
+class Trade(DatabaseModel):
+    idTrade = BigAutoField(primary_key=True)
+    rType = CharField(max_length=50, null=True, help_text="RType", index=False)
+    tradingDate = DateField(null=False, index=False)
+    time = TimeField(null=False, index=False)
+    isin = CharField(max_length=50, null=False, help_text="ISIN", index=False)
+    idSymbol = CharField(max_length=50, null=False, help_text="Symbol", index=True)
+    ceiling = DoubleField(null=False, index=True)
+    floor = DoubleField(null=False, index=True)
+    refPrice = DoubleField(null=False, index=True)
+    avgPrice = DoubleField(null=False, index=True)
+    priorVal = DoubleField(null=False, index=True)
+    lastPrice = DoubleField(null=False, index=True)
+    lastVol = DoubleField(null=False, index=True)
+    totalVol = DoubleField(null=False, index=True)
+    totalVal = DoubleField(null=False, index=True)
+    idMarket = CharField(max_length=50, null=False, help_text="Market", index=True)
+    exchange = CharField(max_length=50, null=False, help_text="Exchange", index=True)
+    tradingSession = CharField(max_length=50, null=False, help_text="trading session", index=True)
+    tradingStatus = CharField(max_length=50, null=False, help_text="trading status", index=True)
+    change = DoubleField(null=False, index=True)
+    ratioChange = DoubleField(null=False, index=True)
+    estMatchedPrice = DoubleField(null=False, index=True)
+    highest = DoubleField(null=False, index=True)
+    lowest = DoubleField(null=False, index=True)
+    side = DoubleField(null=False, index=True)
+    
+    class Meta:
+        db_table = "trade"
+        
+class ForeignRoom(DatabaseModel):
+    idForeignRoom = BigAutoField(primary_key=True)
+    rType = CharField(max_length=50, null=False, help_text="RType", index=False)
+    tradingDate = DateField(null=False, index=False)
+    time = TimeField(null=False, index=False)
+    isin = CharField(max_length=50, null=True, help_text="ISIN", index=False)
+    idSymbol = CharField(max_length=50, null=False, help_text="Symbol", index=True)
+    totalRoom = DoubleField(null=False, index=False)
+    currentRoom = DoubleField(null=False, index=True)
+    buyVol = DoubleField(null=False, index=True)
+    sellVol = DoubleField(null=False, index=True)
+    buyVal = DoubleField(null=False, index=True)
+    sellVal = DoubleField(null=False, index=True)
+    idMarket = CharField(max_length=50, null=False, help_text="Market", index=True)
+    exchange = CharField(max_length=50, null=False, help_text="exchange", index=False)
+    
+    class Meta:
+        db_table = "foreignRoom"
+        
+class Index(DatabaseModel):
+    idIndex = BigAutoField(primary_key=True)
+    rType = CharField(max_length=50, null=False, help_text="RType", index=False)
+    index = CharField(max_length=100, null=False, help_text="index", index=True)
+    indexValue = DoubleField(null=False, index=True)
+    priorValue = DoubleField(null=False, index=True)
+    change = DoubleField(null=False, index=True)
+    ratioChange = DoubleField(null=False, index=True)
+    ratioChange = DoubleField(null=False, index=True)
+    tradingDate = DateField(null=False, index=False)
+    time = TimeField(null=False, index=False)
+    exchange = CharField(max_length=50, null=False, help_text="exchange", index=False)
+    idMarket = CharField(max_length=50, null=False, help_text="Market", index=True)
+    tradingSession = CharField(max_length=50, null=False, help_text="trading session", index=True)
+    indexType = CharField(max_length=50, null=False, help_text="index type", index=True)
+    totalTrade = DoubleField(null=False, index=True)
+    totalQtty = DoubleField(null=False, index=True)
+    totalValue = DoubleField(null=False, index=True)
+    advances = DoubleField(null=False, index=True)
+    noChanges = IntegerField(null=False, index=True)
+    declines = IntegerField(null=False, index=True)
+    ceilings = IntegerField(null=False, index=True)
+    floors = IntegerField(null=False, index=True)
+    
+    class Meta:
+        db_table = "index"
+        
+        
+class ForeignRoom(DatabaseModel):
+    idForeignRoom = BigAutoField(primary_key=True)
+    rType = CharField(max_length=50, null=False, help_text="RType", index=False)
+    tradingDate = DateField(null=False, index=False)
+    time = TimeField(null=False, index=False)
+    isin = CharField(max_length=50, null=False, help_text="ISIN", index=False)
+    idSymbol = CharField(max_length=50, null=False, help_text="Symbol", index=True)
+    totalRoom = DoubleField(null=False, index=True)
+    currentRoom = DoubleField(null=False, index=True)
+    buyVol = DoubleField(null=False, index=True)
+    sellVol = DoubleField(null=False, index=True)
+    idMarket = CharField(max_length=50, null=False, help_text="Market", index=True)
+    exchange = CharField(max_length=50, null=False, help_text="exchange", index=True)
+    
+    class Meta:
+        db_table = "foreignRoom"
+        
+
     
 
         
