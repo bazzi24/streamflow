@@ -19,7 +19,7 @@ run_consumer() {
 
     gnome-terminal --title="Consumer-$base_name" -- bash -c "
         trap '
-            echo -e \"\nConsumer $base_name stopped manually by Ctrl+C\" | tee -a logs/${base_name}_ctrlC_\$(date +%F_%H-%M-%S).log;
+            echo -e \"\nConsumer $base_name stopped manually by Ctrl+C\" | tee -a logs/logKafkaConsumer/${base_name}_ctrlC_\$(date +%F_%H-%M-%S).log;
             echo \"Consumer $base_name was manually stopped (Ctrl+C)\" | mail -s \"Consumer $base_name stopped manually\" example@gmail.com;
             exit 130
         ' SIGINT
@@ -33,7 +33,7 @@ run_consumer() {
         echo 'STARTING $file...';
 
         mkdir -p logs
-        LOG_FILE=\"logs/${base_name}_\$(date +%F_%H-%M-%S).log\"
+        LOG_FILE=\"logs/logKafkaConsumer/${base_name}_\$(date +%F_%H-%M-%S).log\"
 
         python $CONSUMER_DIR/$file 2>&1 | tee -a \$LOG_FILE
         EXIT_CODE=\${PIPESTATUS[0]}
@@ -62,7 +62,7 @@ echo ""
 
 for i in "${!FILES[@]}"; do
     run_consumer "${FILES[$i]}" $((i+1))
-    sleep 2
+    sleep 1
 done
 
 echo ""

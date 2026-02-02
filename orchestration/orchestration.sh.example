@@ -1,6 +1,6 @@
 #!/bin/bash
 
-PYTHON_SCRIPT="fc_data_streaming/producer_market_data.py"
+PYTHON_SCRIPT="kafkaStream/producer_market_data.py"
 
 CHANNELS=("X-TRADE:ALL" "X-QUOTE:ALL" "R:ALL" "MI:ALL" "F:ALL")
 
@@ -12,7 +12,7 @@ run_producer() {
 
     gnome-terminal --title="Producer-$channel" -- bash -c "
         trap '
-            echo -e \"\nProducer $channel stopped manually by Ctrl+C\" | tee -a logs/${channel//:/_}_ctrlC_\$(date +%F_%H-%M-%S).log;
+            echo -e \"\nProducer $channel stopped manually by Ctrl+C\" | tee -a logs/logKafkaProducer/${channel//:/_}_ctrlC_\$(date +%F_%H-%M-%S).log;
             echo \"Producer $channel was manually stopped (Ctrl+C)\" | mail -s \"Producer $channel stopped manually\" example@gmail.com;
             exit 130
         ' SIGINT
@@ -25,7 +25,7 @@ run_producer() {
         echo 'Virtual environment ACTIVATED!';
         echo 'STARTING PYTHON SCRIPT for $channel...';
 
-        LOG_FILE=\"logs/${channel//:/_}_\$(date +%F_%H-%M-%S).log\"
+        LOG_FILE=\"logs/logKafkaProducer/${channel//:/_}_\$(date +%F_%H-%M-%S).log\"
         mkdir -p logs
 
         python $PYTHON_SCRIPT \"$channel\" 2>&1 | tee -a \$LOG_FILE
@@ -59,7 +59,7 @@ echo ""
 
 for i in "${!CHANNELS[@]}"; do
     run_producer "${CHANNELS[$i]}" $((i+1))
-    sleep 2  
+    sleep 1
 done
 
 echo ""
