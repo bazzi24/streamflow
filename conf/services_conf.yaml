@@ -1,0 +1,9 @@
+mysql:
+  name: 'stream_flow'
+  user: 'root'
+  password: 'stream_flow'
+  host: 'localhost'
+  port: 5455
+  max_connection: 100
+  stale_timeout: 300
+  max_allowed_packet: 107374182
