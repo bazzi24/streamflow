@@ -53,5 +53,57 @@ check_container_using_volume() {
 
     local running_containers=$(docker ps --format "{{.Name}}")
 
-    
+    if [ -z "$running_containers" ]; then
+        echo "No running containers found"
+        return 0
+    fi 
+
+    local containers_using_volume=()
+    local volume_usage_details=()
+
+    for container in $running_containers; do
+        local mounts=$(docker inspect "$container" --format '{{range .Mounts}}{{.Source}}{{"|"}}{{end}}' 2>/dev/null || echo "")
+        for volume in "${VOLUMES[@]}"; do 
+            if echo "$mounts" | grep -q "$volume"; then 
+                containers_using_volume+=("$container")
+                volume_usage_details+=("$container -> $volume")
+                break
+            fi
+        done 
+    done 
+
+    if [ ${#containers_using_volume[@]} -gt 0 ]; then 
+        echo ""
+        echo "ERROR: Found running containers using target volumes!!"
+        echo ""
+        echo "Running containers status:"
+        docker ps --format "table {{.Name}}\t{{.Status}}\t{{.Image}}"
+        echo ""
+        echo "Volume usage details:"
+        for detail in "${volume_usage_details[@]}"; do 
+            echo "  - $detail"
+        done 
+        echo ""
+        echo "SOLUTION: Stop the containers before performing backup/restore operations:"
+        echo "docker compose down"
+        echo "After backup/restore, you can restart with:"
+        echo "docker compose up -d"
+        echo ""
+        exit 1
+    fi 
+    echo "No containers are using target volumes, safe to proceed"
+    return 0 
 }
+
+# Function to confirm action
+confirm_action() {
+    local message=$1
+    echo -n "$message (y/n): "
+    read -r response
+    case "$response" in 
+        [yY]|[yY][eE][sS]) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Function to perform backup
