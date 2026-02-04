@@ -21,7 +21,9 @@ services:
       KAFKA_NUM_PARTITIONS: 3
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     volumes:
-      - .log/logKafka:/var/lib/kafka/data
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - streamflow
     restart: unless-stopped
 
   kafka-ui:
@@ -34,6 +36,7 @@ services:
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka:9092"
     depends_on:
       - kafka
+    restart: unless-stopped
   flink-jobmanager:
     build:
       context: .
