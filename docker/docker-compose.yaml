@@ -3,7 +3,9 @@ services:
     image: apache/kafka:latest
     container_name: kafka
     ports:
-      - "9092:9092"
+      - "${EXPOSE_KAFKA_PORT}:9092"
+    env_file:
+      - .env
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
@@ -18,7 +20,7 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 2
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_MIN_INSYNC_REPLICAS: 1
-      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_NUM_PARTITIONS: 6
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     volumes:
       - logs/logKafkaProducer:/var/lib/kafka/data
@@ -30,7 +32,9 @@ services:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
     ports:
-      - "8080:8080"
+      - "${EXPOSE_KAFKA_UI_PORT}:8080"
+    env_file:
+      - .env
     environment:
       KAFKA_CLUSTERS_0_NAME: "local"
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka:9092"
@@ -43,12 +47,15 @@ services:
       dockerfile: Dockerfile.flink
     container_name: flink-jobmanager
     ports:
-      - "8088:8081" # Flink Web UI
+      - "${EXPOSE_FLINK_JOB_PORT}:8081" # Flink Web UI
+    env_file:
+      - .env
     command: jobmanager
     environment:
       - |
         FLINK_PROPERTIES=
         jobmanager.rpc.address: flink-jobmanager
+    restart: unless-stopped
 
   flink-taskmanager:
     build:
@@ -62,6 +69,7 @@ services:
       - |
         FLINK_PROPERTIES=
         jobmanager.rpc.address: flink-jobmanager
+    restart: unless-stopped
     
 
   mysql:
