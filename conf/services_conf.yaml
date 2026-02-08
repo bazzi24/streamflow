@@ -7,3 +7,7 @@ mysql:
   max_connection: 100
   stale_timeout: 300
   max_allowed_packet: 107374182
+
+kafka:
+  host: 'localhost'
+  port: 9092
