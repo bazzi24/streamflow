@@ -42,7 +42,12 @@ def list_stocks(
     on every frontend poll. Cache is invalidated on every Kafka price tick.
     """
     key = _cache_key(exchange, segment)
-    return stock_cache.get_or_set(key, lambda: svc.list_latest_quotes(exchange=exchange, segment=segment))
+    return stock_cache.get_or_set(
+        key,
+        svc.list_latest_quotes,
+        exchange=exchange,
+        segment=segment,
+    )
 
 
 @router.get("/{symbol}", response_model=SymbolMeta)
