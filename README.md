@@ -108,49 +108,7 @@ Open `http://localhost:3000` — the Bloomberg-style board is live.
 
 ## Architecture
 
-```
-SSI WebSocket API
-        │
-        ▼
-┌────────────────────────────────────────────────────────────┐
-│  kafkaStream/producer_market_data.py                      │
-│  5 parallel producers → 5 Kafka topics (partitioned by symbol)│
-│  topics: market_data_trade  market_data_quote             │
-│          index_data  foreign_room_data  securities_status   │
-└────────────────────────────┬───────────────────────────┘
-                             │ Kafka KRaft (6 partitions)
-                             ▼
-┌────────────────────────────────────────────────────────────┐
-│  consumer/*.py                                             │
-│  5 consumers → MySQL data DB (batch_size=50,000)          │
-│  + CandlestickConsumer (1m/1d OHLCV upserts)            │
-└────┬─────────────────────────────────────┬───────────────┘
-     ▼                                     ▼
-data.streaming                    data.corporation / data.market
-(raw tick tables)                (reference: symbols, sectors, exchanges)
-     │
-     ├──────────────────┬────────────────────────────┐
-     ▼                  ▼                           ▼
-data.candlestick        warehouse.dim                  warehouse.fact
-(pre-computed OHLCV)   (Spark ETL)                  (Spark ETL)
-     │
-     └──────────────────┴───────────────────────────┘
-                        ▼
-┌────────────────────────────────────────────────────────────┐
-│  api_service/src/  — FastAPI REST + WebSocket              │
-│  • Kafka → WebSocket bridge (aiokafka)                    │
-│  • 2 DB engines: warehouse (DW) + data (streaming)          │
-│  • JWT auth, watchlist API, REST reads + WebSocket push     │
-└────────────────────────────┬──────────────────────────────┘
-                             │ REST + WebSocket
-                             ▼
-┌────────────────────────────────────────────────────────────┐
-│  frontend/src/  — React 18 + Vite + TypeScript              │
-│  • PriceBoardPage — Bloomberg-style dark board (default)     │
-│  • ChartPageV2    — white TradingView dashboard             │
-│  • lightweight-charts v4 + Zustand + React Query            │
-└────────────────────────────────────────────────────────────┘
-```
+![StreamFlow Banner](docs/assets/architecture.png)
 
 ---
 
