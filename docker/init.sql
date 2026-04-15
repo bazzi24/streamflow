@@ -5,6 +5,21 @@
 -- ============================================
 
 -- ============================================
+-- SECURITY: App user (non-root)
+-- Run this after the databases are created.
+-- In production, create a non-root user with minimal privileges.
+-- ============================================
+-- CREATE USER IF NOT EXISTS 'streamflow_app'@'%'
+--   IDENTIFIED BY 'CHANGE_ME';
+-- GRANT
+--   SELECT, INSERT, UPDATE, DELETE
+-- ON `data`.* TO 'streamflow_app'@'%';
+-- GRANT
+--   SELECT, INSERT, UPDATE, DELETE
+-- ON `warehouse`.* TO 'streamflow_app'@'%';
+-- FLUSH PRIVILEGES;
+
+-- ============================================
 -- DATABASE: data  (raw + reference + charts)
 -- ============================================
 CREATE DATABASE IF NOT EXISTS `data`
