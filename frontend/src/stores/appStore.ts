@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import i18n from "../i18n";
 import type { UserResponse } from "../api/stockApi";
 import type {
   MarketSegment,
@@ -71,6 +72,10 @@ interface AppState {
   /** Whether watchlist is in crypto mode */
   watchlistCryptoMode: boolean;
   setWatchlistCryptoMode: (v: boolean) => void;
+
+  // Language
+  language: "vi" | "en";
+  setLanguage: (lang: "vi" | "en") => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -123,6 +128,13 @@ export const useAppStore = create<AppState>()(
 
       watchlistCryptoMode: false,
       setWatchlistCryptoMode: (v) => set({ watchlistCryptoMode: v }),
+
+      language: "vi",
+      setLanguage: (lang) => {
+        localStorage.setItem("streamflow-language", lang);
+        i18n.changeLanguage(lang);
+        set({ language: lang });
+      },
     }),
     {
       name: "streamflow-store",
@@ -139,7 +151,14 @@ export const useAppStore = create<AppState>()(
         marketVizMode: state.marketVizMode,
         heatmapExchange: state.heatmapExchange,
         watchlistExpanded: state.watchlistExpanded,
+        language: state.language,
       }),
+      onRehydrateStorage: () => (state) => {
+        // Sync i18n language with persisted Zustand language on app load
+        if (state?.language) {
+          i18n.changeLanguage(state.language);
+        }
+      },
     }
   )
 );

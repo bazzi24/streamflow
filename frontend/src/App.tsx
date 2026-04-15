@@ -8,6 +8,9 @@ import { FavoritesPage } from "./pages/FavoritesPage";
 import { MarketsPage } from "./pages/MarketsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { useAppStore } from "./stores/appStore";
+import "./i18n"; // initializes i18next before any component renders
+import { I18nextProvider } from "react-i18next";
+import i18n from "./i18n";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -48,6 +51,7 @@ export default function App() {
   }, [theme]);
 
   return (
+    <I18nextProvider i18n={i18n}>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Routes>
@@ -70,5 +74,6 @@ export default function App() {
         </Routes>
       </BrowserRouter>
     </QueryClientProvider>
+    </I18nextProvider>
   );
 }

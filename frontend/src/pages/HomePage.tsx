@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useAppStore } from "../stores/appStore";
 import { marketApi } from "../api/stockApi";
 import { IndexTickerTape } from "../components/IndexTickerTape";
@@ -39,6 +40,7 @@ function MarketIndices() {
 }
 
 function Header() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { user, clearAuth, toggleTheme } = useAppStore();
   return (
@@ -49,8 +51,8 @@ function Header() {
           <span className={styles.logoText}>StreamFlow</span>
         </div>
         <nav className={styles.nav}>
-          <a className={styles.navLink} href="/">Trang chủ</a>
-          <a className={styles.navLink} href="/markets">Thị trường</a>
+          <a className={styles.navLink} href="/">{t("nav.home")}</a>
+          <a className={styles.navLink} href="/markets">{t("nav.markets")}</a>
         </nav>
       </div>
       <div className={styles.headerRight}>
@@ -60,7 +62,7 @@ function Header() {
         {user ? (
           <>
             <button className={styles.watchlistBtn} onClick={() => navigate("/favorites")}>
-              ★ Watchlist
+              {t("home.watchlist")}
             </button>
             <div className={styles.userChip}>
               <div className={styles.userAvatar}>
@@ -68,7 +70,7 @@ function Header() {
               </div>
               <span>{user.username}</span>
               <button className={styles.logoutBtn} onClick={clearAuth}>
-                Logout
+                {t("auth.logout")}
               </button>
             </div>
           </>
@@ -77,7 +79,7 @@ function Header() {
             className={styles.loginBtn}
             onClick={() => navigate("/login")}
           >
-            Sign In
+            {t("auth.login")}
           </button>
         )}
       </div>
@@ -86,6 +88,7 @@ function Header() {
 }
 
 export function HomePage() {
+  const { t } = useTranslation();
   return (
     <div className={styles.page}>
       <Header />
@@ -96,7 +99,7 @@ export function HomePage() {
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>
             <span className={styles.sectionDot} />
-            Indices
+            {t("home.indices")}
           </h2>
           <MarketIndices />
         </section>
@@ -106,7 +109,7 @@ export function HomePage() {
           <section className={styles.colWide}>
             <h2 className={styles.sectionTitle}>
               <span className={styles.sectionDot} />
-              Market Depth — VND
+              {t("home.marketDepth")}
             </h2>
             <MarketDepthChart symbol="VND" />
           </section>
@@ -114,7 +117,7 @@ export function HomePage() {
           <section className={styles.colNarrow}>
             <h2 className={styles.sectionTitle}>
               <span className={styles.sectionDot} />
-              Top Movers
+              {t("home.topMovers")}
             </h2>
             <TopMovers />
           </section>
@@ -124,14 +127,14 @@ export function HomePage() {
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>
             <span className={styles.sectionDot} />
-            Tin tức
+            {t("home.news")}
           </h2>
           <NewsSection />
         </section>
       </main>
 
       <footer className={styles.footer}>
-        <span>StreamFlow © 2026</span>
+        <span>{t("home.footer")}</span>
         <span>·</span>
         <span>Real-time data from SSI</span>
       </footer>

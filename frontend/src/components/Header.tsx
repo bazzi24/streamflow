@@ -1,16 +1,17 @@
 import { Link, useLocation } from "react-router-dom";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore } from "../stores/appStore";
 import styles from "./Header.module.css";
 
-const NAV_ITEMS = [
-  { to: "/", label: "Trang chủ", icon: "🏠" },
-  { to: "/markets", label: "Thị trường", icon: "📊", hasDropdown: true },
-  { to: "/favorites", label: "Yêu thích", icon: "⭐" },
+const NAV_ITEMS = (t: (key: string) => string) => [
+  { to: "/", label: t("nav.home"), icon: "🏠" },
+  { to: "/markets", label: t("nav.markets"), icon: "📊", hasDropdown: true },
+  { to: "/favorites", label: t("nav.favorites"), icon: "⭐" },
 ];
 
-const MARKET_SEGMENTS = [
-  { to: "/markets", label: "Tất cả" },
+const MARKET_SEGMENTS = (t: (key: string) => string) => [
+  { to: "/markets", label: t("tab.all") },
   { to: "/markets/HOSE", label: "HOSE" },
   { to: "/markets/HNX", label: "HNX" },
   { to: "/markets/VN30", label: "VN30" },
@@ -19,16 +20,24 @@ const MARKET_SEGMENTS = [
 ];
 
 export function Header() {
-  const { user, clearAuth, toggleTheme } = useAppStore();
+  const { user, clearAuth, toggleTheme, language, setLanguage } = useAppStore();
+  const { t } = useTranslation();
   const location = useLocation();
   const [marketsOpen, setMarketsOpen] = useState(false);
+
+  const navItems = NAV_ITEMS(t);
+  const marketSegments = MARKET_SEGMENTS(t);
+
+  function toggleLanguage() {
+    setLanguage(language === "vi" ? "en" : "vi");
+  }
 
   return (
     <header className={styles.header}>
       <div className={styles.left}>
         <Link to="/" className={styles.logo}>StreamFlow</Link>
         <nav className={styles.nav}>
-          {NAV_ITEMS.map((item) => {
+          {navItems.map((item) => {
             if (item.to === "/markets") {
               return (
                 <div
@@ -49,7 +58,7 @@ export function Header() {
                   </Link>
                   {marketsOpen && (
                     <div className={styles.marketsDropdown}>
-                      {MARKET_SEGMENTS.map((m) => (
+                      {marketSegments.map((m) => (
                         <Link
                           key={m.to}
                           to={m.to}
@@ -82,6 +91,15 @@ export function Header() {
       </div>
 
       <div className={styles.right}>
+        {/* Language toggle — left of theme toggle */}
+        <button
+          className={styles.navLink}
+          title={t("header.support")}
+          onClick={toggleLanguage}
+          style={{ padding: "4px 8px", fontSize: 11, fontWeight: 700, minWidth: 36 }}
+        >
+          {language === "vi" ? "EN" : "VI"}
+        </button>
         <button className={styles.navLink} title="Toggle theme" onClick={toggleTheme} style={{ padding: "6px" }}>
           ☀️
         </button>
@@ -91,12 +109,12 @@ export function Header() {
               <span>{user.username}</span>
             </div>
             <button className={styles.logoutBtn} onClick={clearAuth}>
-              Đăng xuất
+              {t("auth.logout")}
             </button>
           </>
         ) : (
           <Link to="/login" className={styles.loginBtn}>
-            Đăng nhập
+            {t("auth.login")}
           </Link>
         )}
       </div>

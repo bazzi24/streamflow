@@ -1,8 +1,10 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { stockApi, marketApi } from "../../api/stockApi";
 import { formatPrice, formatVolume, comparePrice, priceColorByCompare } from "../../lib/utils";
 import { useStockWebSocket } from "../../hooks/useStockWebSocket";
+import { useAppStore } from "../../stores/appStore";
 import type { StockSummary, IndexOverview } from "../../api/stockApi";
 import type { WsMessage } from "../../hooks/useStockWebSocket";
 import { ChartModal } from "../ChartPageV2";
@@ -13,17 +15,19 @@ import styles from "./PriceBoardPage.module.css";
 
 // ── Segment tabs ────────────────────────────────────────────────────────────────
 
-const SEGMENTS = [
-  { label: "Danh mục", value: "MY" },
-  { label: "VN30",     value: "VN30" },
-  { label: "HNX30",    value: "HNX30" },
-  { label: "HOSE",     value: "HOSE" },
-  { label: "HNX",      value: "HNX" },
-  { label: "UPCOM",    value: "UPCOM" },
-  { label: "ETF",       value: "ETF" },
-  { label: "Phái sinh", value: "DERIVATIVE" },
-  { label: "Trái phiếu",   value: "WARRANT" },
-];
+function getSegments(t: (key: string) => string) {
+  return [
+    { label: t("tab.danhMuc"), value: "MY" },
+    { label: t("tab.vn30"),    value: "VN30" },
+    { label: t("tab.hnx30"),   value: "HNX30" },
+    { label: t("tab.hose"),    value: "HOSE" },
+    { label: t("tab.hnx"),     value: "HNX" },
+    { label: t("tab.upcom"),   value: "UPCOM" },
+    { label: t("tab.etf"),     value: "ETF" },
+    { label: t("tab.derivative"), value: "DERIVATIVE" },
+    { label: t("tab.warrant"), value: "WARRANT" },
+  ];
+}
 
 // ── Table column definitions ────────────────────────────────────────────────────
 
@@ -36,6 +40,41 @@ interface ColDef {
   sortable?: boolean;
   colorFn?: (row: StockSummary) => string;
   headerColor?: string; // CSS class name for sub-header text color
+}
+
+function getColumns(t: (key: string) => string): ColDef[] {
+  return [
+    { key: "symbol",        label: t("col.symbol"),    className: styles["col-ck"],    sortable: true,                              headerColor: styles.subWhite },
+    { key: "ceiling",       label: t("col.ceiling"),   className: styles["col-tran"], colorFn: () => styles.cellPurple,             headerColor: styles.subWhite },
+    { key: "floor",         label: t("col.floor"),     className: styles["col-san"],  colorFn: () => styles.cellCyan,              headerColor: styles.subWhite },
+    { key: "ref_price",     label: t("col.ref"),       className: styles["col-tc"],   colorFn: () => styles.cellYellow,            headerColor: styles.subWhite },
+    // Bên mua (buy) — dynamic: compare against ref_price
+    { key: "bid3",          label: t("col.price3"),   className: styles["col-bid3"], colorFn: (r) => priceCompareColor(r.bid_ask_levels[2]?.bid_price ?? 0, r.ref_price, r.ceiling, r.floor), headerColor: styles.subWhite },
+    { key: "kl3",           label: t("col.vol3"),    className: styles["col-kl3"],                                              headerColor: styles.subWhite },
+    { key: "bid2",          label: t("col.price2"),   className: styles["col-bid2"], colorFn: (r) => priceCompareColor(r.bid_ask_levels[1]?.bid_price ?? 0, r.ref_price, r.ceiling, r.floor), headerColor: styles.subWhite },
+    { key: "kl2",           label: t("col.vol2"),    className: styles["col-kl2"],                                              headerColor: styles.subWhite },
+    { key: "bid1",          label: t("col.price1"),   className: styles["col-bid1"], colorFn: (r) => priceCompareColor(r.bid_ask_levels[0]?.bid_price ?? 0, r.ref_price, r.ceiling, r.floor), headerColor: styles.subWhite },
+    { key: "kl1",           label: t("col.vol1"),    className: styles["col-kl1"],                                              headerColor: styles.subWhite },
+    // Khớp lệnh (matched)
+    { key: "matched_price", label: t("col.matchedPrice"), className: styles["col-gia"],                                     headerColor: styles.subWhite },
+    { key: "vol",           label: t("col.matchedVol"),  className: styles["col-kl"],                                      headerColor: styles.subWhite },
+    { key: "change",        label: t("col.change"),     className: styles["col-change"], sortable: true, colorFn: changeColor, headerColor: styles.subWhite },
+    { key: "ratio_change",  label: t("col.pct"),       className: styles["col-pct"],   sortable: true, colorFn: pctColorFn,  headerColor: styles.subWhite },
+    // Bên bán (sell) — dynamic: compare against ref_price
+    { key: "ask1",          label: t("col.price1"),   className: styles["col-ask1"], colorFn: (r) => priceCompareColor(r.ask_levels[0]?.ask_price ?? 0, r.ref_price, r.ceiling, r.floor), headerColor: styles.subWhite },
+    { key: "akl1",          label: t("col.vol1"),    className: styles["col-akl1"],                                              headerColor: styles.subWhite },
+    { key: "ask2",          label: t("col.price2"),   className: styles["col-ask2"], colorFn: (r) => priceCompareColor(r.ask_levels[1]?.ask_price ?? 0, r.ref_price, r.ceiling, r.floor), headerColor: styles.subWhite },
+    { key: "akl2",          label: t("col.vol2"),    className: styles["col-akl2"],                                              headerColor: styles.subWhite },
+    { key: "ask3",          label: t("col.price3"),   className: styles["col-ask3"], colorFn: (r) => priceCompareColor(r.ask_levels[2]?.ask_price ?? 0, r.ref_price, r.ceiling, r.floor), headerColor: styles.subWhite },
+    { key: "akl3",          label: t("col.vol3"),    className: styles["col-akl3"],                                              headerColor: styles.subWhite },
+    // Stats
+    { key: "total_vol",     label: t("col.totalVol"), className: styles["col-tongkl"], sortable: true,                         headerColor: styles.subWhite },
+    { key: "highest",       label: t("col.high"),     className: styles["col-cao"],  colorFn: () => styles.cellUp,              headerColor: styles.subWhite },
+    { key: "lowest",        label: t("col.low"),     className: styles["col-thap"], colorFn: () => styles.cellDown,            headerColor: styles.subWhite },
+    { key: "nn_mua",        label: t("col.foreignBuy"), className: styles["col-nnmua"],                                      headerColor: styles.subWhite },
+    { key: "nn_ban",        label: t("col.foreignSell"), className: styles["col-nnban"],                                      headerColor: styles.subWhite },
+    { key: "room",          label: t("col.room"),    className: `${styles["col-room"]} ${styles.stickyRight}`,                  headerColor: styles.subWhite },
+  ];
 }
 
 function changeColor(row: StockSummary) {
@@ -66,42 +105,9 @@ function priceCompareColor(price: number, ref: number, ceiling: number, floor: n
   return priceColorByCompare(result);
 }
 
-const COLUMNS: ColDef[] = [
-  { key: "symbol",        label: "CK",       className: styles["col-ck"],   sortable: true,                              headerColor: styles.subWhite },
-  { key: "ceiling",       label: "Trần",     className: styles["col-tran"], colorFn: () => styles.cellPurple,             headerColor: styles.subWhite },
-  { key: "floor",         label: "Sàn",      className: styles["col-san"],  colorFn: () => styles.cellCyan,              headerColor: styles.subWhite },
-  { key: "ref_price",     label: "TC",       className: styles["col-tc"],   colorFn: () => styles.cellYellow,            headerColor: styles.subWhite },
-  // Bên mua (buy) — dynamic: compare against ref_price
-  { key: "bid3",          label: "Giá 3",   className: styles["col-bid3"], colorFn: (r) => priceCompareColor(r.bid_ask_levels[2]?.bid_price ?? 0, r.ref_price, r.ceiling, r.floor), headerColor: styles.subWhite },
-  { key: "kl3",           label: "KL 3",    className: styles["col-kl3"],                                              headerColor: styles.subWhite },
-  { key: "bid2",          label: "Giá 2",   className: styles["col-bid2"], colorFn: (r) => priceCompareColor(r.bid_ask_levels[1]?.bid_price ?? 0, r.ref_price, r.ceiling, r.floor), headerColor: styles.subWhite },
-  { key: "kl2",           label: "KL 2",    className: styles["col-kl2"],                                              headerColor: styles.subWhite },
-  { key: "bid1",          label: "Giá 1",   className: styles["col-bid1"], colorFn: (r) => priceCompareColor(r.bid_ask_levels[0]?.bid_price ?? 0, r.ref_price, r.ceiling, r.floor), headerColor: styles.subWhite },
-  { key: "kl1",           label: "KL 1",    className: styles["col-kl1"],                                              headerColor: styles.subWhite },
-  // Khớp lệnh (matched)
-  { key: "matched_price", label: "Giá",     className: styles["col-gia"],                                              headerColor: styles.subWhite },
-  { key: "vol",           label: "KL",      className: styles["col-kl"],                                              headerColor: styles.subWhite },
-  { key: "change",        label: "+/-",     className: styles["col-change"], sortable: true, colorFn: changeColor,     headerColor: styles.subWhite },
-  { key: "ratio_change",  label: "%",       className: styles["col-pct"],   sortable: true, colorFn: pctColorFn,        headerColor: styles.subWhite },
-  // Bên bán (sell) — dynamic: compare against ref_price
-  { key: "ask1",          label: "Giá 1",   className: styles["col-ask1"], colorFn: (r) => priceCompareColor(r.ask_levels[0]?.ask_price ?? 0, r.ref_price, r.ceiling, r.floor), headerColor: styles.subWhite },
-  { key: "akl1",          label: "KL 1",    className: styles["col-akl1"],                                              headerColor: styles.subWhite },
-  { key: "ask2",          label: "Giá 2",   className: styles["col-ask2"], colorFn: (r) => priceCompareColor(r.ask_levels[1]?.ask_price ?? 0, r.ref_price, r.ceiling, r.floor), headerColor: styles.subWhite },
-  { key: "akl2",          label: "KL 2",    className: styles["col-akl2"],                                              headerColor: styles.subWhite },
-  { key: "ask3",          label: "Giá 3",   className: styles["col-ask3"], colorFn: (r) => priceCompareColor(r.ask_levels[2]?.ask_price ?? 0, r.ref_price, r.ceiling, r.floor), headerColor: styles.subWhite },
-  { key: "akl3",          label: "KL 3",    className: styles["col-akl3"],                                              headerColor: styles.subWhite },
-  // Stats
-  { key: "total_vol",     label: "Tổng KL", className: styles["col-tongkl"], sortable: true,                        headerColor: styles.subWhite },
-  { key: "highest",       label: "Cao",     className: styles["col-cao"],  colorFn: () => styles.cellUp,              headerColor: styles.subWhite },
-  { key: "lowest",        label: "Thấp",   className: styles["col-thap"], colorFn: () => styles.cellDown,            headerColor: styles.subWhite },
-  { key: "nn_mua",        label: "NN mua",  className: styles["col-nnmua"],                                            headerColor: styles.subWhite },
-  { key: "nn_ban",        label: "NN bán",  className: styles["col-nnban"],                                            headerColor: styles.subWhite },
-  { key: "room",          label: "Room",    className: `${styles["col-room"]} ${styles.stickyRight}`,                  headerColor: styles.subWhite },
-];
-
-// Pixel widths keyed to COLUMNS order (must match CSS .col-* definitions)
-const colWidths: Record<string, string> = {
-  symbol:        "66px",
+function getColWidths(): Record<string, string> {
+  return {
+    symbol:       "66px",
   ceiling:       "62px",
   floor:         "62px",
   ref_price:     "60px",
@@ -127,7 +133,8 @@ const colWidths: Record<string, string> = {
   nn_mua:        "64px",
   nn_ban:        "64px",
   room:          "80px",
-};
+  };
+}
 
 // ── Price Row ─────────────────────────────────────────────────────────────────
 
@@ -320,13 +327,13 @@ function TickerCard({ index: idx }: { index: IndexOverview }) {
 
 // ── Market Breadth Panel ───────────────────────────────────────────
 
-function MarketBreadthPanel({ indices }: { indices: IndexOverview[] }) {
+function MarketBreadthPanel({ indices, t }: { indices: IndexOverview[]; t: (key: string) => string }) {
   const breadthIndices = ["VNINDEX", "VN30", "HNXINDEX", "HNX30"].map((id) =>
     indices.find((i) => i.index_id === id)
   ).filter(Boolean) as IndexOverview[];
   return (
     <div className={styles.marketBreadth}>
-      <div className={styles.breadthHeader}>T/G Tăng/Giảm</div>
+      <div className={styles.breadthHeader}>{t("market.breadth")}</div>
       {breadthIndices.map((idx) => (
         <div key={idx.index_id} className={styles.breadthRow}>
           <span className={styles.breadthSymbol}>{idx.index_name}</span>
@@ -386,6 +393,8 @@ function IndexSparkline({ change }: { value: number; change: number }) {
 // ── Main Price Board ──────────────────────────────────────────────────────────
 
 export function PriceBoardPage() {
+  const { t } = useTranslation();
+  const { language, setLanguage } = useAppStore();
   const [activeSegment, setActiveSegment] = useState<string>("HOSE");
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("symbol");
@@ -485,6 +494,10 @@ export function PriceBoardPage() {
 
   const indices = overview?.indices ?? [];
 
+  const segments = getSegments(t);
+  const columns = getColumns(t);
+  const colWidths = getColWidths();
+
   return (
     <div className={styles.boardRoot}>
       {/* ── SSI Header ────────────────────────────────────────────────────── */}
@@ -508,55 +521,64 @@ export function PriceBoardPage() {
             <div className={styles.marqueeInner}>
               <span className={styles.marqueeItem}>
                 <span className={styles.marqueeDot} />
-                Lãi suất qua đêm: 4.5%
+                {t("market.ovvernightRate")}
               </span>
               <span className={styles.marqueeItem}>
                 <span className={styles.marqueeDot} />
-                USD/VND: 25,450
+                {t("market.usdVnd")}
               </span>
               <span className={styles.marqueeItem}>
                 <span className={styles.marqueeDot} />
-                Phiên giao dịch: ATO
+                {t("market.session")}
               </span>
               <span className={styles.marqueeItem}>
                 <span className={styles.marqueeDot} />
-                Thị trường: HOSE đang mở cửa
+                {t("market.marketOpen")}
               </span>
               {/* Duplicate for seamless loop */}
               <span className={styles.marqueeItem}>
                 <span className={styles.marqueeDot} />
-                Lãi suất qua đêm: 4.5%
+                {t("market.ovvernightRate")}
               </span>
               <span className={styles.marqueeItem}>
                 <span className={styles.marqueeDot} />
-                USD/VND: 25,450
+                {t("market.usdVnd")}
               </span>
               <span className={styles.marqueeItem}>
                 <span className={styles.marqueeDot} />
-                Phiên giao dịch: ATO
+                {t("market.session")}
               </span>
               <span className={styles.marqueeItem}>
                 <span className={styles.marqueeDot} />
-                Thị trường: HOSE đang mở cửa
+                {t("market.marketOpen")}
               </span>
             </div>
           </div>
 
           {/* Top bar icon buttons */}
           <div className={styles.topBarIcons}>
-            <div className={styles.topBarIcon} title="Hỗ trợ">
+            <button
+              className={styles.topBarIcon}
+              title={language === "vi" ? "Switch to English" : "Chuyển sang Tiếng Việt"}
+              onClick={() => setLanguage(language === "vi" ? "en" : "vi")}
+              style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent-cyan)", padding: 0 }}
+            >
+              <span style={{ fontWeight: 800, fontSize: 12 }}>{language === "vi" ? "EN" : "VI"}</span>
+            </button>
+
+            <div className={styles.topBarIcon} title={t("header.support")}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="12" cy="12" r="10" />
                 <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01" />
               </svg>
             </div>
-            <div className={styles.topBarIcon} title="Tìm kiếm">
+            <div className={styles.topBarIcon} title={t("header.search")}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="11" cy="11" r="8" />
                 <path d="M21 21l-4.35-4.35" />
               </svg>
             </div>
-            <div className={styles.topBarIcon} title="Thông báo">
+            <div className={styles.topBarIcon} title={t("header.notification")}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" />
               </svg>
@@ -574,7 +596,7 @@ export function PriceBoardPage() {
               ) : null;
             })}
           </div>
-          <MarketBreadthPanel indices={indices} />
+          <MarketBreadthPanel indices={indices} t={t} />
         </div>
 
         {/* Row 3: Navigation tabs */}
@@ -587,14 +609,14 @@ export function PriceBoardPage() {
             <input
               className={styles.navSearchInput}
               type="text"
-              placeholder="Tìm kiếm CK"
+              placeholder={t("search.placeholder")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
 
           <div className={styles.navTabs}>
-            {SEGMENTS.map((seg) => (
+            {segments.map((seg) => (
               <button
                 key={seg.value}
                 className={`${styles.navTab} ${activeSegment === seg.value ? styles.active : ""}`}
@@ -613,7 +635,7 @@ export function PriceBoardPage() {
       <div className={styles.tableWrapper}>
         <table className={styles.dataTable}>
           <colgroup>
-            {COLUMNS.map((col) => (
+            {columns.map((col) => (
               <col
                 key={col.key}
                 className={col.className}
@@ -626,32 +648,24 @@ export function PriceBoardPage() {
           {/* ── Table (multi-level grouped header) ───────────────────────────────── */}
           <thead>
             <tr className={styles.tableGroupRow}>
-              {/* Các cột đơn dùng rowSpan=2 */}
-              <th rowSpan={2} className={`${styles.thGroup} ${styles["col-ck"]}`}>CK</th>
-              <th rowSpan={2} className={`${styles.thGroup}`}>Trần</th>
-              <th rowSpan={2} className={`${styles.thGroup}`}>Sàn</th>
-              <th rowSpan={2} className={`${styles.thGroup} ${styles["col-tc"]}`}>TC</th>
-              
-              {/* Nhóm Bên mua */}
-              <th colSpan={6} className={`${styles.thGroup} ${styles.thGroupMuted}`}>Bên mua</th>
-              
-              {/* Nhóm Khớp lệnh */}
-              <th colSpan={4} className={`${styles.thGroup} ${styles.thGroupMuted}`}>Khớp lệnh</th>
-              
-              {/* Nhóm Bên bán */}
-              <th colSpan={6} className={`${styles.thGroup} ${styles.thGroupMuted}`}>Bên bán</th>
-              
-              {/* Các cột thống kê dùng rowSpan=2 */}
-              <th rowSpan={2} className={`${styles.thGroup} ${styles["col-tongkl"]}`}>Tổng KL</th>
-              <th rowSpan={2} className={`${styles.thGroup}`}>Cao</th>
-              <th rowSpan={2} className={`${styles.thGroup}`}>Thấp</th>
-              
-              {/* Nhóm ĐTNN */}
-              <th colSpan={3} className={`${styles.thGroup} ${styles.thGroupMuted}`}>ĐTNN</th>
+              <th rowSpan={2} className={`${styles.thGroup} ${styles["col-ck"]}`}>{t("col.symbol")}</th>
+              <th rowSpan={2} className={`${styles.thGroup}`}>{t("col.ceiling")}</th>
+              <th rowSpan={2} className={`${styles.thGroup}`}>{t("col.floor")}</th>
+              <th rowSpan={2} className={`${styles.thGroup} ${styles["col-tc"]}`}>{t("col.ref")}</th>
+
+              <th colSpan={6} className={`${styles.thGroup} ${styles.thGroupMuted}`}>{t("group.buySide")}</th>
+              <th colSpan={4} className={`${styles.thGroup} ${styles.thGroupMuted}`}>{t("group.match")}</th>
+              <th colSpan={6} className={`${styles.thGroup} ${styles.thGroupMuted}`}>{t("group.sellSide")}</th>
+
+              <th rowSpan={2} className={`${styles.thGroup} ${styles["col-tongkl"]}`}>{t("col.totalVol")}</th>
+              <th rowSpan={2} className={`${styles.thGroup}`}>{t("col.high")}</th>
+              <th rowSpan={2} className={`${styles.thGroup}`}>{t("col.low")}</th>
+
+              <th colSpan={3} className={`${styles.thGroup} ${styles.thGroupMuted}`}>{t("group.foreign")}</th>
           </tr>
 
           <tr className={styles.tableSubRow}>
-              {COLUMNS.map((col) => {
+              {columns.map((col) => {
                   
                   const isParentCol = [
                       "symbol", "ceiling", "floor", "ref_price", 
@@ -683,15 +697,15 @@ export function PriceBoardPage() {
             {isLoading ? (
               Array.from({ length: 20 }).map((_, i) => (
                 <tr key={i} className={styles.loadingRow}>
-                  <td colSpan={COLUMNS.length} className={styles.loadingCell}>
-                    Loading...
+                  <td colSpan={columns.length} className={styles.loadingCell}>
+                    {t("loading")}
                   </td>
                 </tr>
               ))
             ) : displayedStocks.length === 0 ? (
               <tr className={styles.emptyRow}>
-                <td colSpan={COLUMNS.length} className={styles.emptyCell}>
-                  Không có dữ liệu
+                <td colSpan={columns.length} className={styles.emptyCell}>
+                  {t("noData")}
                 </td>
               </tr>
             ) : (

@@ -1,19 +1,22 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { stockApi } from "../api/stockApi";
 import { StockGrid } from "../components/StockGrid";
 import { useAppStore, type MarketSegment } from "../stores/appStore";
 import styles from "./MarketsPage.module.css";
 
-const SEGMENTS: { key: MarketSegment; label: string }[] = [
-  { key: "ALL", label: "Tất cả" },
-  { key: "HOSE", label: "HOSE" },
-  { key: "HNX", label: "HNX" },
-  { key: "VN30", label: "VN30" },
-  { key: "HNX30", label: "HNX30" },
-  { key: "UPCOM", label: "UPCOM" },
-];
+function getSegments(t: (key: string) => string): { key: MarketSegment; label: string }[] {
+  return [
+    { key: "ALL", label: t("tab.all") },
+    { key: "HOSE", label: "HOSE" },
+    { key: "HNX", label: "HNX" },
+    { key: "VN30", label: "VN30" },
+    { key: "HNX30", label: "HNX30" },
+    { key: "UPCOM", label: "UPCOM" },
+  ];
+}
 
 function Header() {
   const navigate = useNavigate();
@@ -50,11 +53,14 @@ function Header() {
 }
 
 export function MarketsPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const params = useParams();
   const activeSegment = useAppStore((s) => s.activeSegment);
   const setActiveSegment = useAppStore((s) => s.setActiveSegment);
   const [search, setSearch] = useState("");
+
+  const segments = getSegments(t);
 
   const segment = (params.segment?.toUpperCase() as MarketSegment) ?? activeSegment;
 
@@ -76,21 +82,21 @@ export function MarketsPage() {
       <div className={styles.body}>
         {/* Title bar */}
         <div className={styles.titleBar}>
-          <h1 className={styles.title}>🏛️ Thị trường</h1>
-          {isLoading && <span className={styles.loading}>Đang cập nhật...</span>}
+          <h1 className={styles.title}>{t("markets.title")}</h1>
+          {isLoading && <span className={styles.loading}>{t("updating")}</span>}
           <input
             type="text"
-            placeholder="Tìm mã ck..."
+            placeholder={t("search.placeholderMarket")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className={styles.searchInput}
           />
-          <span className={styles.count}>{filtered.length} mã</span>
+          <span className={styles.count}>{filtered.length} {t("markets.count")}</span>
         </div>
 
         {/* Segment tabs */}
         <div className={styles.tabBar}>
-          {SEGMENTS.map((seg) => (
+          {segments.map((seg) => (
             <button
               key={seg.key}
               onClick={() => {
@@ -109,7 +115,7 @@ export function MarketsPage() {
           <StockGrid
             symbols={filtered}
             showExchange={segment === "ALL"}
-            title={SEGMENTS.find((s) => s.key === segment)?.label}
+            title={segments.find((s) => s.key === segment)?.label}
           />
         </div>
       </div>

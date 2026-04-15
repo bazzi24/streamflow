@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import {
   createChart,
   PriceScaleMode,
@@ -600,7 +601,7 @@ function DepthChart({ book }: { book: OrderBook | null }) {
 // MarketDepth
 // ─────────────────────────────────────────────────────────────────────────────
 
-function MarketDepth({ symbol }: { symbol: string }) {
+function MarketDepth({ symbol, t }: { symbol: string; t: (key: string) => string }) {
   const [book, setBook] = useState<OrderBook | null>(null);
 
   const { data: restBook } = useQuery({
@@ -661,18 +662,18 @@ function MarketDepth({ symbol }: { symbol: string }) {
   return (
     <div className={styles["market-depth-section"]}>
       <div className={styles["section-header"]}>
-        <span className={styles["section-title"]}>Độ sâu thị trường</span>
+        <span className={styles["section-title"]}>{t("chart.marketDepth")}</span>
       </div>
       <div className={styles["depth-summary"]}>
         <div className={styles["depth-sum-col"]}>
-          <div className={styles["depth-sum-label"]}>Tổng KL Mua</div>
+          <div className={styles["depth-sum-label"]}>{t("chart.totalBidVol")}</div>
           <div className={styles["depth-sum-bid"]}>{formatVolume(totalBidVol)}</div>
           <div className={styles["depth-bar-container"]}>
             <div className={styles["depth-bar-fill"]} style={{ width: `${bidPct}%` }} />
           </div>
         </div>
         <div className={styles["depth-sum-col"]}>
-          <div className={styles["depth-sum-label"]}>Tổng KL Bán</div>
+          <div className={styles["depth-sum-label"]}>{t("chart.totalAskVol")}</div>
           <div className={styles["depth-sum-ask"]}>{formatVolume(totalAskVol)}</div>
           <div className={styles["depth-bar-container"]}>
             <div className={styles["depth-bar-fill"]} style={{ width: `${100 - bidPct}%`, background: "#ff3d57" }} />
@@ -682,7 +683,7 @@ function MarketDepth({ symbol }: { symbol: string }) {
       <table className={styles["depth-table"]}>
         <thead>
           <tr>
-            <th>KL Mua</th><th>Giá mua</th><th>Giá bán</th><th>KL Bán</th>
+            <th>{t("chart.klMua")}</th><th>{t("chart.giaMua")}</th><th>{t("chart.giaBan")}</th><th>{t("chart.klBan")}</th>
           </tr>
         </thead>
         <tbody>
@@ -701,7 +702,7 @@ function MarketDepth({ symbol }: { symbol: string }) {
 
             return (
               <tr key={i} className={styles["depth-row"]}>
-                {/* KL Mua */}
+                {/* Bid Vol */}
                 <td className={styles["depth-bar-cell"]}>
                   <div className={`${styles["depth-bar"]} ${styles.bid}`} style={bidVolStyle} />
                   <span style={{ color: pColor }}>
@@ -716,7 +717,7 @@ function MarketDepth({ symbol }: { symbol: string }) {
                 <td className={styles["depth-price"]} style={{ color: priceColor(ask?.price) }}>
                   {ask ? formatPrice(ask.price) : "–"}
                 </td>
-                {/* KL Bán */}
+                {/* Ask Vol */}
                 <td className={styles["depth-bar-cell"]}>
                   <div className={`${styles["depth-bar"]} ${styles.ask}`} style={askVolStyle} />
                   <span style={{ color: priceColor(ask?.price) }}>
@@ -736,7 +737,7 @@ function MarketDepth({ symbol }: { symbol: string }) {
 // TradeMatching — live trade tape
 // ─────────────────────────────────────────────────────────────────────────────
 
-function TradeMatching({ symbol }: { symbol: string }) {
+function TradeMatching({ symbol, t }: { symbol: string; t: (key: string) => string }) {
   const [ticks, setTicks] = useState<TradeTick[]>([]);
 
   useStockWebSocket({
@@ -756,19 +757,19 @@ function TradeMatching({ symbol }: { symbol: string }) {
   return (
     <div className={styles["trade-section"]}>
       <div className={styles["section-header"]}>
-        <span className={styles["section-title"]}>Khớp lệnh</span>
+        <span className={styles["section-title"]}>{t("chart.tradeMatching")}</span>
         <span className={styles["section-header-right"]}>{ticks.length} ticks</span>
       </div>
       <div className={styles["trade-table-wrap"]}>
         <table className={styles["trade-table"]}>
           <thead>
             <tr>
-              <th>Thời gian</th><th>Giá</th><th>KL</th><th>+/-</th><th>MB</th>
+              <th>{t("chart.time")}</th><th>{t("chart.price")}</th><th>{t("chart.vol")}</th><th>{t("chart.change")}</th><th>{t("chart.side")}</th>
             </tr>
           </thead>
           <tbody>
             {ticks.length === 0 && (
-              <tr><td colSpan={5} className={styles["trade-empty"]}>Waiting for trades…</td></tr>
+              <tr><td colSpan={5} className={styles["trade-empty"]}>{t("chart.waiting")}</td></tr>
             )}
             {ticks.map((tick, idx) => (
               <tr key={idx} className={`${styles["trade-row"]} ${tick.side === "buy" ? styles.buy : tick.side === "sell" ? styles.sell : ""}`}>
@@ -802,12 +803,13 @@ interface ChartModalProps {
 }
 
 export function ChartModal({ symbol, onClose }: ChartModalProps) {
+  const { t } = useTranslation();
   const [activeSymbol, setActiveSymbol] = useState(symbol);
   const [interval, setInterval] = useState("1D");
   const [chartType, setChartType] = useState<"candlestick" | "line" | "area">("candlestick");
   const [activeIndicators, setActiveIndicators] = useState<string[]>(["MA20"]);
   const [priceScaleMode, setPriceScaleMode] = useState<"linear" | "log">("linear");
-  const [activeTab, setActiveTab] = useState("Giao dịch");
+  const [activeTab, setActiveTab] = useState(t("chart.tab.transaction"));
 
   const { data: ohlcvData } = useQuery({
     queryKey: ["ohlcv", activeSymbol, interval],
@@ -862,7 +864,7 @@ export function ChartModal({ symbol, onClose }: ChartModalProps) {
         {/* ── Header ── */}
         <div className={styles["modal-header"]}>
           <div className={styles["header-tabs"]}>
-            {["Giao dịch", "Hồ sơ", "Cổ đông", "Vốn và cổ tức", "Tin tức", "Thống kê"].map((tab) => (
+            {[t("chart.tab.transaction"), t("chart.tab.profile"), t("chart.tab.shareholder"), t("chart.tab.capitalDividend"), t("chart.tab.news"), t("chart.tab.stats")].map((tab) => (
               <button
                 key={tab}
                 className={`${styles["header-tab"]} ${activeTab === tab ? styles.active : ""}`}
@@ -873,7 +875,7 @@ export function ChartModal({ symbol, onClose }: ChartModalProps) {
             ))}
           </div>
           <div className={styles["header-right"]}>
-            <button className={styles["order-btn"]}>Đặt lệnh</button>
+            <button className={styles["order-btn"]}>{t("chart.orderBtn")}</button>
             <button className={styles["close-btn"]} onClick={onClose}>✕</button>
           </div>
         </div>
@@ -902,32 +904,32 @@ export function ChartModal({ symbol, onClose }: ChartModalProps) {
               <div className={styles["stock-divider"]} />
               <div className={styles["stock-stats"]}>
                 <div className={styles["stock-stat"]}>
-                  <span className={styles["stock-stat-label"]}>Mở/TC</span>
+                  <span className={styles["stock-stat-label"]}>{t("chart.openTC")}</span>
                   <span className={`${styles["stock-stat-value"]} ${styles.ref}`}>{formatPrice(quote?.ref_price)}</span>
                 </div>
                 <span className={styles["stat-sep"]}>|</span>
                 <div className={styles["stock-stat"]}>
-                  <span className={styles["stock-stat-label"]}>Cao</span>
+                  <span className={styles["stock-stat-label"]}>{t("col.high")}</span>
                   <span className={`${styles["stock-stat-value"]} ${styles.up}`}>{formatPrice(quote?.highest)}</span>
                 </div>
                 <span className={styles["stat-sep"]}>|</span>
                 <div className={styles["stock-stat"]}>
-                  <span className={styles["stock-stat-label"]}>Thấp</span>
+                  <span className={styles["stock-stat-label"]}>{t("col.low")}</span>
                   <span className={`${styles["stock-stat-value"]} ${styles.down}`}>{formatPrice(quote?.lowest)}</span>
                 </div>
                 <span className={styles["stat-sep"]}>|</span>
                 <div className={styles["stock-stat"]}>
-                  <span className={styles["stock-stat-label"]}>Trần</span>
+                  <span className={styles["stock-stat-label"]}>{t("col.ceiling")}</span>
                   <span className={`${styles["stock-stat-value"]} ${styles.ceiling}`}>{formatPrice(quote?.ceiling)}</span>
                 </div>
                 <span className={styles["stat-sep"]}>|</span>
                 <div className={styles["stock-stat"]}>
-                  <span className={styles["stock-stat-label"]}>Sàn</span>
+                  <span className={styles["stock-stat-label"]}>{t("col.floor")}</span>
                   <span className={`${styles["stock-stat-value"]} ${styles.floor}`}>{formatPrice(quote?.floor)}</span>
                 </div>
                 <span className={styles["stat-sep"]}>|</span>
                 <div className={styles["stock-stat"]}>
-                  <span className={styles["stock-stat-label"]}>Tổng KL</span>
+                  <span className={styles["stock-stat-label"]}>{t("col.totalVol")}</span>
                   <span className={styles["stock-stat-value"]}>{formatVolume(quote?.volume)}</span>
                 </div>
               </div>
@@ -1020,11 +1022,11 @@ export function ChartModal({ symbol, onClose }: ChartModalProps) {
 
               {/* Right sidebar */}
               <div className={styles["right-sidebar"]}>
-                <MarketDepth symbol={activeSymbol} />
+                <MarketDepth symbol={activeSymbol} t={t} />
                 <div className={styles["depth-histogram"]}>
                   <DepthChart book={orderBook ?? null} />
                 </div>
-                <TradeMatching symbol={activeSymbol} />
+                <TradeMatching symbol={activeSymbol} t={t} />
               </div>
             </div>
           </div>

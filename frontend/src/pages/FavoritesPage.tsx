@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { stockApi, watchlistApi, type StockSummary } from "../api/stockApi";
 import { useAppStore } from "../stores/appStore";
 import { Header } from "../components/Header";
@@ -10,7 +11,7 @@ import styles from "./FavoritesPage.module.css";
 type SortKey = keyof StockSummary;
 type SortDir = "asc" | "desc";
 
-function FavoritesTable() {
+function FavoritesTable({ t }: { t: (key: string) => string }) {
   const navigate = useNavigate();
   const token = useAppStore((s) => s.token);
   const queryClient = useQueryClient();
@@ -70,8 +71,8 @@ function FavoritesTable() {
     return (
       <div className={styles.emptyState}>
         <span className={styles.emptyIcon}>🔒</span>
-        <p className={styles.emptyTitle}>Vui lòng đăng nhập</p>
-        <p className={styles.emptyDesc}>Đăng nhập để xem danh mục yêu thích của bạn.</p>
+        <p className={styles.emptyTitle}>{t("favorites.notLoggedIn")}</p>
+        <p className={styles.emptyDesc}>{t("favorites.notLoggedInDesc")}</p>
       </div>
     );
   }
@@ -80,7 +81,7 @@ function FavoritesTable() {
     return (
       <div className={styles.emptyState}>
         <span className={styles.emptyIcon}>⏳</span>
-        <p className={styles.emptyText}>Đang tải...</p>
+        <p className={styles.emptyText}>{t("loading")}</p>
       </div>
     );
   }
@@ -89,26 +90,26 @@ function FavoritesTable() {
     return (
       <div className={styles.emptyState}>
         <span className={styles.emptyIcon}>⭐</span>
-        <p className={styles.emptyTitle}>Chưa có cổ phiếu yêu thích</p>
-        <p className={styles.emptyDesc}>Thêm cổ phiếu từ trang chủ hoặc thị trường.</p>
+        <p className={styles.emptyTitle}>{t("favorites.empty")}</p>
+        <p className={styles.emptyDesc}>{t("favorites.emptyDesc")}</p>
       </div>
     );
   }
 
   const cols: { key: SortKey; label: string; align?: "right" }[] = [
-    { key: "symbol", label: "Mã CK" },
-    { key: "ceiling", label: "Trần", align: "right" },
-    { key: "ref_price", label: "TC", align: "right" },
-    { key: "floor", label: "Sàn", align: "right" },
-    { key: "best_bid_vol", label: "KL Mua", align: "right" },
-    { key: "best_bid_price", label: "Giá Mua", align: "right" },
-    { key: "best_ask_price", label: "Giá Bán", align: "right" },
-    { key: "best_ask_vol", label: "KL Bán", align: "right" },
-    { key: "matched_price", label: "Khớp Lệnh", align: "right" },
-    { key: "last_price", label: "Giá", align: "right" },
-    { key: "change", label: "+/-", align: "right" },
-    { key: "ratio_change", label: "%", align: "right" },
-    { key: "volume", label: "KL", align: "right" },
+    { key: "symbol", label: t("favorites.code") },
+    { key: "ceiling", label: t("col.ceiling"), align: "right" },
+    { key: "ref_price", label: t("col.ref"), align: "right" },
+    { key: "floor", label: t("col.floor"), align: "right" },
+    { key: "best_bid_vol", label: t("favorites.bidVol"), align: "right" },
+    { key: "best_bid_price", label: t("favorites.bidPrice"), align: "right" },
+    { key: "best_ask_price", label: t("favorites.askPrice"), align: "right" },
+    { key: "best_ask_vol", label: t("favorites.askVol"), align: "right" },
+    { key: "matched_price", label: t("favorites.matched"), align: "right" },
+    { key: "last_price", label: t("favorites.price"), align: "right" },
+    { key: "change", label: t("col.change"), align: "right" },
+    { key: "ratio_change", label: t("col.pct"), align: "right" },
+    { key: "volume", label: t("col.totalVol"), align: "right" },
   ];
 
   return (
@@ -180,15 +181,16 @@ function FavoritesTable() {
 }
 
 export function FavoritesPage() {
+  const { t } = useTranslation();
   return (
     <div className={styles.page}>
       <Header />
       <div className={styles.body}>
         <div className={styles.titleBar}>
-          <h1 className={styles.title}>⭐ Yêu thích</h1>
-          <span className={styles.subtitle}>Danh sách theo dõi cá nhân</span>
+          <h1 className={styles.title}>{t("favorites.title")}</h1>
+          <span className={styles.subtitle}>{t("favorites.subtitle")}</span>
         </div>
-        <FavoritesTable />
+        <FavoritesTable t={t} />
       </div>
     </div>
   );
