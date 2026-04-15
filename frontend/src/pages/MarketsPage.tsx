@@ -19,6 +19,7 @@ function getSegments(t: (key: string) => string): { key: MarketSegment; label: s
 }
 
 function Header() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { user, clearAuth, toggleTheme } = useAppStore();
   return (
@@ -29,23 +30,23 @@ function Header() {
           <span className={styles.logoText}>StreamFlow</span>
         </div>
         <nav className={styles.nav}>
-          <a className={styles.navLink} href="/">Trang chủ</a>
-          <a className={styles.navLink} href="/markets">Thị trường</a>
+          <a className={styles.navLink} href="/">{t("nav.home")}</a>
+          <a className={styles.navLink} href="/markets">{t("nav.markets")}</a>
         </nav>
       </div>
       <div className={styles.headerRight}>
         <button className={styles.iconBtn} title="Toggle theme" onClick={toggleTheme}>☀️</button>
         {user ? (
           <>
-            <button className={styles.watchlistBtn} onClick={() => navigate("/favorites")}>★ Watchlist</button>
+            <button className={styles.watchlistBtn} onClick={() => navigate("/favorites")}>{t("home.watchlist")}</button>
             <div className={styles.userChip}>
               <div className={styles.userAvatar}>{user.username.charAt(0).toUpperCase()}</div>
               <span>{user.username}</span>
-              <button className={styles.logoutBtn} onClick={clearAuth}>Logout</button>
+              <button className={styles.logoutBtn} onClick={clearAuth}>{t("auth.logout")}</button>
             </div>
           </>
         ) : (
-          <button className={styles.loginBtn} onClick={() => navigate("/login")}>Sign In</button>
+          <button className={styles.loginBtn} onClick={() => navigate("/login")}>{t("auth.login")}</button>
         )}
       </div>
     </header>

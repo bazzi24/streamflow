@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import {
   createChart,
   IChartApi,
@@ -64,6 +65,7 @@ function calcMA(data: OHLCVBar[], period: number): LineData<Time>[] {
 }
 
 export function ChartPage() {
+  const { t } = useTranslation();
   const { symbol } = useParams<{ symbol: string }>();
   const navigate = useNavigate();
   const setSelectedSymbol = useAppStore((s) => s.setSelectedSymbol);
@@ -307,9 +309,9 @@ export function ChartPage() {
   if (!symbol) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-900 text-white">
-        <p>Không tìm thấy mã chứng khoán.</p>
+        <p>{t("chartPage.notFound")}</p>
         <button className="ml-4 text-blue-400 underline" onClick={() => navigate("/")}>
-          Quay lại
+          {t("chartPage.back")}
         </button>
       </div>
     );
@@ -324,7 +326,7 @@ export function ChartPage() {
         <button
           onClick={() => navigate(-1)}
           className="text-gray-400 hover:text-white"
-          title="Quay lại"
+          title={t("chartPage.back")}
         >
           ←
         </button>
@@ -338,7 +340,7 @@ export function ChartPage() {
               {quote.change > 0 ? "+" : ""}{formatPrice(quote.change)} ({quote.ratio_change.toFixed(2)}%)
             </span>
             <span className="ml-4 text-xs text-gray-400">
-              KL: {formatVolume(quote.volume)} | Cao: {formatPrice(quote.highest)} | Thấp: {formatPrice(quote.lowest)}
+              {t("chart.vol")}: {formatVolume(quote.volume)} | {t("col.high")}: {formatPrice(quote.highest)} | {t("col.low")}: {formatPrice(quote.lowest)}
             </span>
           </>
         )}
