@@ -422,36 +422,74 @@ class CandlestickConsumer(threading.Thread):
 
     def _fill_foreign_room(self, conn):
         """Patch nn_mua/nn_ban/room into pending 1d records using the latest
-        foreign_room row for each (symbol, trading_date)."""
+        foreign_room row for each (symbol, trading_date).
+
+        Uses a single batched query instead of N individual lookups —
+        avoids N round-trips when flushing 200+ 1d bars at once.
+        """
         if not self._pending_1d:
             return
 
         cur = conn.cursor()
-        for row in self._pending_1d:
-            symbol = row[0]
-            trading_date = row[1]
-            try:
-                cur.execute("""
-                    SELECT buy_vol, sell_vol, current_room
-                    FROM data.foreign_room
-                    WHERE symbol = %s AND trading_date = %s
-                    ORDER BY id DESC LIMIT 1
-                """, (symbol, trading_date))
-                fr = cur.fetchone()
-                if fr:
-                    # Update tuple in-place
-                    self._pending_1d[self._pending_1d.index(row)] = (
-                        row[0], row[1], row[2], row[3], row[4], row[5], row[6],
-                        int(fr[0]) if fr[0] else 0,
-                        int(fr[1]) if fr[1] else 0,
-                        int(fr[2]) if fr[2] else 0,
-                    )
-            except Exception as e:
-                self.logger.warning(
-                    "Could not fetch foreign_room for %s on %s: %s",
-                    symbol, trading_date, e,
+        try:
+            # Build IN clause with paired (symbol, trading_date) for each bar
+            pairs = [(row[0], row[1]) for row in self._pending_1d]
+            # One query: latest foreign_room row per (symbol, trading_date)
+            # MySQL row constructor IN: (symbol, date) IN (('AAA','2026-01-01'), ...)
+            placeholders = ",".join(["(%s, %s)"] * len(pairs))
+            flat = [v for pair in pairs for v in pair]  # flatten [(s, d), ...] → [s, d, ...]
+            cur.execute(
+                f"""
+                SELECT symbol, trading_date, buy_vol, sell_vol, current_room
+                FROM data.foreign_room f1
+                WHERE id = (
+                    SELECT MAX(id)
+                    FROM data.foreign_room f2
+                    WHERE f2.symbol = f1.symbol
+                      AND f2.trading_date = f1.trading_date
                 )
-        cur.close()
+                AND (symbol, trading_date) IN (VALUES {placeholders})
+                """,
+                flat,
+            )
+            fr_map = {(row[0], str(row[1])): row for row in cur.fetchall()}
+        except Exception as e:
+            self.logger.warning("Batched foreign_room fetch failed, falling back to per-row query: %s", e)
+            fr_map = {}
+            for row in self._pending_1d:
+                symbol, trading_date = row[0], row[1]
+                try:
+                    cur.execute("""
+                        SELECT buy_vol, sell_vol, current_room
+                        FROM data.foreign_room
+                        WHERE symbol = %s AND trading_date = %s
+                        ORDER BY id DESC LIMIT 1
+                    """, (symbol, trading_date))
+                    fr = cur.fetchone()
+                    if fr:
+                        fr_map[(symbol, str(trading_date))] = fr
+                except Exception as inner_e:
+                    self.logger.warning(
+                        "Could not fetch foreign_room for %s on %s: %s",
+                        symbol, trading_date, inner_e,
+                    )
+        finally:
+            cur.close()
+
+        # Patch each pending 1d record in place
+        patched = []
+        for row in self._pending_1d:
+            fr = fr_map.get((row[0], str(row[1])))
+            if fr:
+                patched.append((
+                    row[0], row[1], row[2], row[3], row[4], row[5], row[6],
+                    int(fr[2]) if fr[2] else 0,
+                    int(fr[3]) if fr[3] else 0,
+                    int(fr[4]) if fr[4] else 0,
+                ))
+            else:
+                patched.append(row)
+        self._pending_1d = patched
 
     def _flush(self):
         """Write pending 1m + 1d bars to MySQL.
