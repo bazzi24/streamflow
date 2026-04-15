@@ -173,9 +173,9 @@ services:
     env_file:
       - ../.env
     environment:
-      DB_USER: root
-      DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:-stream_flow}
-      SECRET_KEY: ${SECRET_KEY:-streamflow-super-secret-key-change-in-production}
+      # All secrets come from ../.env (loaded by env_file above).
+      # Do NOT add DB_USER, DB_PASSWORD, or SECRET_KEY here —
+      # that would override .env and reintroduce the security issues.
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     depends_on:
       kafka:
