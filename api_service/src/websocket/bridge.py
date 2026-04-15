@@ -7,6 +7,7 @@ from aiokafka import AIOKafkaConsumer
 import pymysql
 from . import ws_manager as _ws_mod
 ws_manager = _ws_mod
+from ..services.stock_cache import stock_cache
 from ..config import get_settings
 
 settings = get_settings()
@@ -245,6 +246,8 @@ async def kafka_bridge_loop() -> None:
                 symbol = ws_msg.get("symbol", "")
 
                 if msg_type == "price_update" and symbol:
+                    # Invalidate the /stocks cache so next poll picks up the new tick immediately.
+                    await stock_cache.invalidate_all()
                     await ws_manager.broadcast_to_symbol(symbol, ws_msg)
                     await ws_manager.broadcast_all(ws_msg)
                 elif msg_type == "orderbook_update" and symbol:
