@@ -1,5 +1,6 @@
 import { IChartApi } from "lightweight-charts";
 import { useAppStore, type TimeInterval, type ChartType, type DrawingTool } from "../stores/appStore";
+import { useTranslation } from "react-i18next";
 import { cn } from "../lib/utils";
 
 // ── Toolbar Button ──────────────────────────────────────────────────────────
@@ -132,19 +133,21 @@ export function ChartToolbar({
     activeDrawingTool,
     setActiveDrawingTool,
     toggleIndicator,
+    setActiveDrawingTool: _sa,
   } = useAppStore();
+  const { t } = useTranslation();
 
   const intervals: { key: TimeInterval; label: string }[] = [
-    { key: "1m", label: "1T" },
-    { key: "5m", label: "5T" },
-    { key: "15m", label: "15T" },
-    { key: "30m", label: "30T" },
-    { key: "1h", label: "1H" },
-    { key: "2h", label: "2H" },
-    { key: "4h", label: "4H" },
-    { key: "1D", label: "1D" },
-    { key: "1W", label: "1W" },
-    { key: "1M", label: "1M" },
+    { key: "1m",  label: "1m"  },
+    { key: "5m",  label: "5m"  },
+    { key: "15m", label: "15m" },
+    { key: "30m", label: "30m" },
+    { key: "1h",  label: "1h"  },
+    { key: "2h",  label: "2h"  },
+    { key: "4h",  label: "4h"  },
+    { key: "1D",  label: "1D"  },
+    { key: "1W",  label: "1W"  },
+    { key: "1M",  label: "1M"  },
   ];
 
   const chartTypes: { key: ChartType; label: string }[] = [
@@ -288,7 +291,7 @@ export function ChartToolbar({
           {activeDrawingTool && (
             <div className="mt-2 border-t border-gray-600 pt-2">
               <p className="mb-1 text-xs text-gray-400">
-                Đang chọn: <span className="text-white">{drawingTools.find(d => d.key === activeDrawingTool)?.label}</span>
+                {t("chartToolbar.selected")}: <span className="text-white">{drawingTools.find(d => d.key === activeDrawingTool)?.label}</span>
               </p>
               <p className="text-xs text-gray-500">Click trên biểu đồ để vẽ. Click phải để xóa.</p>
             </div>
