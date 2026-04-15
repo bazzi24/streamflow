@@ -109,5 +109,13 @@
   "chart.tab.shareholder": "Cổ đông",
   "chart.tab.capitalDividend": "Vốn và cổ tức",
   "chart.tab.news": "Tin tức",
-  "chart.tab.stats": "Thống kê"
+  "chart.tab.stats": "Thống kê",
+
+  "header.switchToEnglish": "Chuyển sang Tiếng Anh",
+  "header.switchToVietnamese": "Chuyển sang Tiếng Việt",
+
+  "chartPage.notFound": "Không tìm thấy mã chứng khoán.",
+  "chartPage.back": "Quay lại",
+
+  "chartToolbar.selected": "Đang chọn"
 }

@@ -109,5 +109,11 @@
   "chart.tab.shareholder": "Shareholder",
   "chart.tab.capitalDividend": "Capital & Dividend",
   "chart.tab.news": "News",
-  "chart.tab.stats": "Statistics"
+  "chart.tab.stats": "Statistics",
+
+  "header.switchToEnglish": "Switch to English",
+  "header.switchToVietnamese": "Switch to Vietnamese",
+
+  "chartPage.notFound": "Stock symbol not found.",
+  "chartPage.back": "Go back"
 }
