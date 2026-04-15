@@ -86,7 +86,7 @@ class ProducerThread(threading.Thread):
         self._connected.set()
 
     def _on_close(self):
-        self.logger.warning("WebSocket closed for %s", self.channel)
+        self.logger.warning("WebSocket closed for %s — will reconnect", self.channel)
         self._connected.clear()
 
     def _send(self, message):
@@ -101,10 +101,25 @@ class ProducerThread(threading.Thread):
             elif self.channel == "MI:ALL":
                 key = message.get("IndexId", "").encode("utf-8") if isinstance(message, dict) else None
             self._producer.send(self.topic, value=message, key=key)
-            self._producer.flush()
-            self.logger.debug("Sent to %s: %s", self.topic, str(message)[:80])
+            self.logger.debug("Queued for %s: %s", self.topic, str(message)[:80])
         except Exception as e:
             self.logger.error("Send error on %s: %s", self.topic, e)
+
+    def _reconnect_stream(self):
+        """Stop the current stream and start a fresh one."""
+        try:
+            self._stream.stop()
+        except Exception:
+            pass
+        self._connected.clear()
+        self._stream = MarketDataStream(
+            config,
+            MarketDataClient(config),
+            on_close=self._on_close,
+            on_open=self._on_open,
+        )
+        self._stream.start(self._send, self._on_error, self.channel)
+        self.logger.info("Stream restarted for %s, waiting for reconnect...", self.channel)
 
     def run(self):
         self.logger = setup_logger(f"producer-{self.channel.replace(':', '_')}")
@@ -112,41 +127,38 @@ class ProducerThread(threading.Thread):
                          self.channel, self.topic)
 
         self._producer = self._make_producer()
-        self._stream = MarketDataStream(
-            config,
-            MarketDataClient(config),
-            on_close=self._on_close,
-            on_open=self._on_open,
-        )
-
-        self._stream.start(self._send, self._on_error, self.channel)
+        self._reconnect_stream()
 
         # Wait for WebSocket to connect and stay connected.
-        # The original producer_market_data.py blocks forever on input() or sleep().
-        # Since MarketDataStream.start() is fire-and-forget, we wait here so the
-        # thread doesn't exit and close the producer prematurely.
+        # If _on_close fires, _connected is cleared and we restart the stream.
+        # The original producer_market_data.py silently deadlocked on WS drop.
         try:
             while not self._stop_event.is_set():
                 if self._connected.wait(timeout=30):
-                    # Connected — keep thread alive until stop signal
                     self.logger.info("Producer thread for %s connected. Running...", self.channel)
                     while not self._stop_event.is_set():
-                        time.sleep(5)
+                        # Poll _connected every 5s so we detect a close promptly
+                        if not self._connected.wait(timeout=5):
+                            self.logger.warning("Connection lost for %s, reconnecting...", self.channel)
+                            self._reconnect_stream()
+                            break
                 else:
                     self.logger.warning("WebSocket for %s did not connect in 30s, retrying...", self.channel)
+                    self._reconnect_stream()
         except Exception as e:
             self.logger.error("Producer thread error for %s: %s", self.channel, e)
         finally:
             self.logger.info("Producer thread for %s stopping.", self.channel)
-            self._stream.stop()
+            try:
+                self._stream.stop()
+            except Exception:
+                pass
             if self._producer:
                 self._producer.flush()
                 self._producer.close()
 
     def stop(self):
         self._stop_event.set()
-        if self._stream:
-            self._stream.stop()
 
 
 def main():
