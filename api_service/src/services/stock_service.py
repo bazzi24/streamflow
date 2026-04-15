@@ -213,6 +213,10 @@ class StockService:
         When exchange is 'VN30' or 'HNX30', filters to index constituents
         from data.indexcomponent.
         Warrants are excluded from regular exchange listings.
+
+        Performance: a single JOIN query (with correlated subqueries) replaces
+        the previous 4-query approach, eliminating the Python-side dict joins
+        and reducing RAM pressure when many symbols are loaded.
         """
         from ..models import StreamingDataQuote, StreamingForeignRoom, DataIndexComponent
 
@@ -234,71 +238,62 @@ class StockService:
                 index_symbols = {r.symbol for r in rows if r.symbol}
             logger.debug("Index %s constituents at %s: %d symbols", exchange, latest_date, len(index_symbols or []))
 
-        # Subquery: latest data_trade row per symbol
-        trade_subq = (
+        # ── Latest trade row per symbol (deduplication) ─────────────────────
+        # Window function keeps one row per symbol regardless of INSERT ordering.
+        from sqlalchemy.orm import aliased
+
+        ranked = (
             self.db.query(
-                StreamingDataTrade.symbol,
-                StreamingDataTrade.exchange,
-                func.max(StreamingDataTrade.id).label("max_id"),
+                StreamingDataTrade,
+                func.row_number()
+                .over(
+                    partition_by=StreamingDataTrade.symbol,
+                    order_by=desc(StreamingDataTrade.id),
+                )
+                .label("rn")
             )
-            .group_by(StreamingDataTrade.symbol, StreamingDataTrade.exchange)
+            .subquery()
         )
+        ranked_trade = aliased(StreamingDataTrade, ranked)
+
+        base = (
+            self.db.query(
+                ranked_trade,
+                StreamingDataQuote,
+                StreamingForeignRoom,
+            )
+            .filter(ranked.c.rn == 1)
+            .outerjoin(
+                StreamingDataQuote,
+                StreamingDataQuote.id
+                == self.db.query(func.max(StreamingDataQuote.id))
+                .filter(StreamingDataQuote.symbol_id == ranked_trade.symbol)
+                .correlate(ranked_trade)
+                .scalar_subquery(),
+            )
+            .outerjoin(
+                StreamingForeignRoom,
+                StreamingForeignRoom.id
+                == self.db.query(func.max(StreamingForeignRoom.id))
+                .filter(StreamingForeignRoom.symbol == ranked_trade.symbol)
+                .correlate(ranked_trade)
+                .scalar_subquery(),
+            )
+        )
+
         if exchange and exchange not in ("VN30", "HNX30"):
-            trade_subq = trade_subq.filter(StreamingDataTrade.exchange == exchange)
-        trade_subq = trade_subq.subquery()
+            base = base.filter(ranked_trade.exchange == exchange)
 
-        # Latest data_quote row per symbol (for bid/ask)
-        quote_subq = (
-            self.db.query(
-                StreamingDataQuote.symbol_id,
-                func.max(StreamingDataQuote.id).label("max_qid"),
-            )
-            .group_by(StreamingDataQuote.symbol_id)
-            .subquery()
-        )
-
-        # Latest foreign_room row per symbol (for nn_mua, nn_ban, room)
-        foreign_subq = (
-            self.db.query(
-                StreamingForeignRoom.symbol,
-                func.max(StreamingForeignRoom.id).label("max_fid"),
-            )
-            .group_by(StreamingForeignRoom.symbol)
-            .subquery()
-        )
-
-        trade_rows = (
-            self.db.query(StreamingDataTrade)
-            .join(trade_subq, StreamingDataTrade.id == trade_subq.c.max_id)
-            .all()
-        )
+        rows = base.all()
 
         # ── Apply VN30/HNX30 symbol filter ─────────────────────────────────
         if index_symbols is not None:
-            trade_rows = [r for r in trade_rows if r.symbol in index_symbols]
+            rows = [(r, q_row, f_row) for r, q_row, f_row in rows if r.symbol in index_symbols]
 
-        quote_rows = (
-            self.db.query(StreamingDataQuote)
-            .join(quote_subq, StreamingDataQuote.id == quote_subq.c.max_qid)
-            .all()
-        )
-
-        foreign_rows = (
-            self.db.query(StreamingForeignRoom)
-            .join(foreign_subq, StreamingForeignRoom.id == foreign_subq.c.max_fid)
-            .all()
-        )
-        foreign_map: dict[str, StreamingForeignRoom] = {
-            r.symbol: r for r in foreign_rows if r.symbol
-        }
-
-        quote_map: dict[str, StreamingDataQuote] = {
-            r.symbol_id: r for r in quote_rows if r.symbol_id
-        }
-
+        # ── Build StockSummary list ──────────────────────────────────────────
         summaries = []
-        for r in trade_rows:
-            symbol = r.symbol or ""
+        for trade_row, quote_row, foreign_row in rows:
+            symbol = trade_row.symbol or ""
 
             # Warrant detection
             is_warrant = self._is_warrant(symbol)
@@ -316,20 +311,17 @@ class StockService:
                 if is_warrant:
                     continue
 
-            quote = quote_map.get(symbol)
-            foreign = foreign_map.get(symbol)
-
             # bid_ask_levels: buy-side levels only [best, 2nd, 3rd]
             bid_ask_levels: list[BidAskLevel] = []
             # ask_levels: sell-side levels only [best, 2nd, 3rd]
             ask_levels: list[BidAskLevel] = []
 
-            if quote:
+            if quote_row:
                 for i in range(1, 4):
-                    bp = getattr(quote, f"bid_price{i}", None)
-                    bv = getattr(quote, f"bid_vol{i}", None)
-                    ap = getattr(quote, f"ask_price{i}", None)
-                    av = getattr(quote, f"ask_vol{i}", None)
+                    bp = getattr(quote_row, f"bid_price{i}", None)
+                    bv = getattr(quote_row, f"bid_vol{i}", None)
+                    ap = getattr(quote_row, f"ask_price{i}", None)
+                    av = getattr(quote_row, f"ask_vol{i}", None)
                     # Buy side
                     bid_ask_levels.append(
                         BidAskLevel(
@@ -358,31 +350,31 @@ class StockService:
             summaries.append(
                 StockSummary(
                     symbol=symbol,
-                    symbol_name=r.symbol or "",
-                    exchange=r.exchange or "",
-                    last_price=_f(r.last_price),
-                    change=_f(r.change, scale=1000),
-                    ratio_change=_f(r.ratio_change, scale=1000) * 100,
-                    volume=_i(r.total_vol),
-                    last_vol=_i(r.last_vol),
-                    total_vol=_i(r.total_vol),
-                    value=_f(r.total_val),
-                    ceiling=_f(r.ceiling),
-                    floor=_f(r.floor),
-                    ref_price=_f(r.ref_price),
+                    symbol_name=trade_row.symbol or "",
+                    exchange=trade_row.exchange or "",
+                    last_price=_f(trade_row.last_price),
+                    change=_f(trade_row.change, scale=1000),
+                    ratio_change=_f(trade_row.ratio_change, scale=1000) * 100,
+                    volume=_i(trade_row.total_vol),
+                    last_vol=_i(trade_row.last_vol),
+                    total_vol=_i(trade_row.total_vol),
+                    value=_f(trade_row.total_val),
+                    ceiling=_f(trade_row.ceiling),
+                    floor=_f(trade_row.floor),
+                    ref_price=_f(trade_row.ref_price),
                     best_bid_price=best_bid_price,
                     best_bid_vol=best_bid_vol,
                     best_ask_price=best_ask_price,
                     best_ask_vol=best_ask_vol,
                     bid_ask_levels=bid_ask_levels,
                     ask_levels=ask_levels,
-                    matched_price=_f(r.est_matched_price),
-                    time=r.time or "",
-                    highest=_f(r.highest),
-                    lowest=_f(r.lowest),
-                    nn_mua=_i(foreign.buy_vol) if foreign else 0,
-                    nn_ban=_i(foreign.sell_vol) if foreign else 0,
-                    room=(_i(foreign.current_room) if foreign else 0),
+                    matched_price=_f(trade_row.est_matched_price),
+                    time=trade_row.time or "",
+                    highest=_f(trade_row.highest),
+                    lowest=_f(trade_row.lowest),
+                    nn_mua=_i(foreign_row.buy_vol) if foreign_row else 0,
+                    nn_ban=_i(foreign_row.sell_vol) if foreign_row else 0,
+                    room=(_i(foreign_row.current_room) if foreign_row else 0),
                     is_warrant=is_warrant,
                     is_etf=is_etf,
                 )
