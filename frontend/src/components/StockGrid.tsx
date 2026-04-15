@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { watchlistApi, type StockSummary } from "../api/stockApi";
 import { useAppStore } from "../stores/appStore";
 import { formatPrice, formatVolume } from "../lib/utils";
@@ -16,6 +17,7 @@ interface StockGridProps {
 }
 
 export function StockGrid({ symbols, showExchange = false, title }: StockGridProps) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const token = useAppStore((s) => s.token);
   const queryClient = useQueryClient();
@@ -73,20 +75,20 @@ export function StockGrid({ symbols, showExchange = false, title }: StockGridPro
   }
 
   const cols: { key: SortKey; label: string; align?: "right" }[] = [
-    { key: "symbol", label: "Mã CK" },
-    ...(showExchange ? [{ key: "exchange" as SortKey, label: "Sàn" }] : []),
-    { key: "ceiling", label: "Trần", align: "right" },
-    { key: "ref_price", label: "TC", align: "right" },
-    { key: "floor", label: "Sàn", align: "right" },
-    { key: "best_bid_vol", label: "KL Mua", align: "right" },
-    { key: "best_bid_price", label: "Giá Mua", align: "right" },
-    { key: "best_ask_price", label: "Giá Bán", align: "right" },
-    { key: "best_ask_vol", label: "KL Bán", align: "right" },
-    { key: "matched_price", label: "Khớp Lệnh", align: "right" },
-    { key: "last_price", label: "Giá", align: "right" },
-    { key: "change", label: "+/-", align: "right" },
-    { key: "ratio_change", label: "%", align: "right" },
-    { key: "volume", label: "KL", align: "right" },
+    { key: "symbol", label: t("favorites.code") },
+    ...(showExchange ? [{ key: "exchange" as SortKey, label: t("col.floor") }] : []),
+    { key: "ceiling", label: t("col.ceiling"), align: "right" },
+    { key: "ref_price", label: t("col.ref"), align: "right" },
+    { key: "floor", label: t("col.floor"), align: "right" },
+    { key: "best_bid_vol", label: t("favorites.bidVol"), align: "right" },
+    { key: "best_bid_price", label: t("favorites.bidPrice"), align: "right" },
+    { key: "best_ask_price", label: t("favorites.askPrice"), align: "right" },
+    { key: "best_ask_vol", label: t("favorites.askVol"), align: "right" },
+    { key: "matched_price", label: t("favorites.matched"), align: "right" },
+    { key: "last_price", label: t("favorites.price"), align: "right" },
+    { key: "change", label: t("col.change"), align: "right" },
+    { key: "ratio_change", label: t("col.pct"), align: "right" },
+    { key: "volume", label: t("col.totalVol"), align: "right" },
   ];
 
   return (
@@ -129,7 +131,7 @@ export function StockGrid({ symbols, showExchange = false, title }: StockGridPro
             {sorted.length === 0 && (
               <tr>
                 <td colSpan={cols.length + (token ? 1 : 0)} className={styles.empty}>
-                  Không có dữ liệu
+                  {t("noData")}
                 </td>
               </tr>
             )}
