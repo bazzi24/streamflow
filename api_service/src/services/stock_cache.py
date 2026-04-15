@@ -9,10 +9,11 @@ plus a TTL safety-net in case Kafka stalls.
 """
 
 import asyncio
+import inspect
 import time
 import logging
 from collections import defaultdict
-from typing import Any
+from typing import Any, Awaitable, Callable, Union
 
 logger = logging.getLogger(__name__)
 
@@ -96,12 +97,20 @@ class StockCache:
 
     # ── get_or_set with thundering-herd protection ───────────────────────────
 
-    async def get_or_set(self, key: str, fetch_fn) -> Any:
+    async def get_or_set(
+        self,
+        key: str,
+        fetch_fn: Callable[..., Union[Any, Awaitable[Any]]],
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
         """
         Return cached value if fresh, otherwise call fetch_fn and cache the result.
 
         Per-key lock ensures only one coroutine triggers fetch_fn for a given key
         even when multiple requests arrive simultaneously.
+
+        fetch_fn may be sync or async — wrapped automatically.
         """
         cached = await self.get(key)
         if cached is not None:
@@ -115,6 +124,14 @@ class StockCache:
                 return cached
 
             logger.debug("Cache miss, fetching: key=%r", key)
-            value = await fetch_fn()
+            fn = fetch_fn(*args, **kwargs)
+            if inspect.iscoroutine(fn):
+                value = await fn
+            else:
+                value = fn
             await self.set(key, value)
             return value
+
+
+# Module-level singleton — shared across all routes and the Kafka bridge.
+stock_cache = StockCache()
