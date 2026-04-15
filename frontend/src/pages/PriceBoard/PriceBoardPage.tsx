@@ -559,7 +559,7 @@ export function PriceBoardPage() {
           <div className={styles.topBarIcons}>
             <button
               className={styles.topBarIcon}
-              title={language === "vi" ? "Switch to English" : "Chuyển sang Tiếng Việt"}
+              title={language === "vi" ? t("header.switchToEnglish") : t("header.switchToVietnamese")}
               onClick={() => setLanguage(language === "vi" ? "en" : "vi")}
               style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent-cyan)", padding: 0 }}
             >
