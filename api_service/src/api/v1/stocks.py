@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from ...database import get_streaming_db
 from ...services.stock_service import StockService
+from ...services.stock_cache import stock_cache
 from ...schemas.stock import (
     StockQuote, OrderBook, OHLCVBar, SymbolMeta, StockSummary,
     MarketOverviewResponse,
@@ -15,6 +16,15 @@ def get_stock_service(db: Session = Depends(get_streaming_db)) -> StockService:
     return StockService(db)
 
 
+# ── Cache helpers ────────────────────────────────────────────────────────────
+
+def _cache_key(exchange: str | None, segment: str | None) -> str:
+    """Composite key so every (exchange, segment) combination is cached separately."""
+    return f"list_latest_quotes:{exchange or '_'}:{segment or '_'}"
+
+
+# ── Routes ────────────────────────────────────────────────────────────────────
+
 @router.get("", response_model=list[StockSummary])
 def list_stocks(
     exchange: Annotated[str | None, Query(
@@ -26,8 +36,13 @@ def list_stocks(
     svc: StockService = Depends(get_stock_service),
 ):
     """List all symbols with latest prices. Optionally filter by exchange or segment.
-    Warrants are excluded from exchange listings unless segment=WARRANT."""
-    return svc.list_latest_quotes(exchange=exchange, segment=segment)
+    Warrants are excluded from exchange listings unless segment=WARRANT.
+
+    Results are cached in-memory for up to 2 seconds to avoid repeated DB queries
+    on every frontend poll. Cache is invalidated on every Kafka price tick.
+    """
+    key = _cache_key(exchange, segment)
+    return stock_cache.get_or_set(key, lambda: svc.list_latest_quotes(exchange=exchange, segment=segment))
 
 
 @router.get("/{symbol}", response_model=SymbolMeta)
