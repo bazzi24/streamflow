@@ -87,8 +87,7 @@ class MarketKafkaProducer:
             return
 
         self.producer.send(topic, value=message, key=key)
-        self.producer.flush()          # flush each batch so messages aren't buffered indefinitely
-        self.logger.debug("Sent to %s: %s", topic, str(message)[:80])
+        self.logger.debug("Queued for %s: %s", topic, str(message)[:80])
 
     def get_market_data(self, message):
         self.send_to_kafka(message)
