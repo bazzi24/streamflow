@@ -1,35 +1,36 @@
-# Data Processing & Math
+# Core dependencies (from pyproject.toml [project])
 numpy
 pandas
-scipy
-python-dateutil==2.8.2
-
-# Database & SQL
 sqlalchemy
-psycopg2-binary
-
-# Big Data & Streaming
-pyspark==3.5.1
-apache-flink==2.1.0
+pymysql>=1.1.0
 kafka-python==2.1.1
-apache-beam
-
-# Machine Learning & AI
-scikit-learn
-tensorflow
-keras
-h5py
-
-# Web Scraping & Automation
-requests
 selenium==4.8.0
 beautifulsoup4
-
-# Visualization & UI
-plotly
 tqdm
-ipywidgets
+pyspark==3.5.1
+python-dateutil==2.8.2
+requests
+python-dotenv>=1.2.1
+ssi-fc-data>=2.2.2
+strenum>=0.4.15
+itsdangerous>=2.2.0
+peewee>=3.19.0
+xxhash>=3.6.0
+websocket-client>=1.7.0
 
-
+# Dev dependencies (from pyproject.toml [dependency-groups] dev)
+black
+ipykernel
 jupyterlab
-notebook
+
+# API dependencies (from pyproject.toml [dependency-groups] api)
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+pydantic-settings==2.6.0
+sqlalchemy==2.0.36
+cryptography>=43.0.0
+aiokafka==0.12.0
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart>=0.0.20
+email-validator>=2.0.0
