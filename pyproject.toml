@@ -1,0 +1,51 @@
+[project]
+name = "streamflow"
+version = "0.1.0"
+description = "Real-time Data Pipeline using Spark, Kafka, MySQL"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "requests",
+    "pandas",
+    "sqlalchemy",
+    "pymysql>=1.1.0",
+    "kafka-python==2.1.1",
+    # "apache-flink" is excluded: apache-flink==2.1.0 requires building
+    # Cython extensions that are incompatible with Python 3.13.
+    # The Flink job (lib/flink_candlestick_1m.py) runs inside its own
+    # Docker container (flink-taskmanager) where it can be installed
+    # separately if needed.
+    "selenium==4.8.0",
+    "beautifulsoup4",
+    "tqdm",
+    "pyspark==3.5.1",
+    "python-dateutil==2.8.2",
+    "numpy",
+    "python-dotenv>=1.2.1",
+    "ssi-fc-data>=2.2.2",
+    "strenum>=0.4.15",
+    "itsdangerous>=2.2.0",
+    "peewee>=3.19.0",
+    "xxhash>=3.6.0",
+    "websocket-client>=1.7.0",
+]
+
+[dependency-groups]
+dev = [
+    "black",
+    "ipykernel",
+    "jupyterlab",
+]
+api = [
+    "fastapi==0.115.0",
+    "uvicorn[standard]==0.32.0",
+    "pydantic-settings==2.6.0",
+    "sqlalchemy==2.0.36",
+    "pymysql>=1.1.0",
+    "cryptography>=43.0.0",
+    "aiokafka==0.12.0",
+    "python-jose[cryptography]==3.3.0",
+    "passlib[bcrypt]==1.7.4",
+    "python-multipart>=0.0.20",
+    "email-validator>=2.0.0",
+]

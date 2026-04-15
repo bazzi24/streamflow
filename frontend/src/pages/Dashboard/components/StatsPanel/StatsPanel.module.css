@@ -1,0 +1,228 @@
+/* StatsPanel styles */
+.statsPanel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #0f1623;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 212, 255, 0.18) transparent;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid rgba(0, 212, 255, 0.08);
+  flex-shrink: 0;
+}
+
+.panelTitle {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: #00d4ff;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.panelSubtitle {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  color: #4b5563;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Price hero */
+.priceHero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 10px 8px;
+  gap: 4px;
+  border-bottom: 1px solid rgba(0, 212, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.heroPrice {
+  font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
+  font-size: 22px;
+  font-weight: 700;
+  color: #e2e8f0;
+  font-variant-numeric: tabular-nums;
+}
+
+.heroChange {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.heroChange.up { color: #00e676; }
+.heroChange.down { color: #ff3d57; }
+.heroChange.neutral { color: #374151; }
+
+/* Sections */
+.statsSection {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(0, 212, 255, 0.06);
+}
+
+.statsSection:last-child {
+  border-bottom: none;
+}
+
+.statsSectionTitle {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 9px;
+  font-weight: 600;
+  color: #374151;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-bottom: 6px;
+}
+
+.statsGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 8px;
+}
+
+.statRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 4px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  padding: 2px 0;
+}
+
+.statLabel {
+  color: #4b5563;
+  font-size: 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.statValue {
+  color: #e2e8f0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.statValue.up { color: #00e676; }
+.statValue.down { color: #ff3d57; }
+.statValue.accent { color: #00d4ff; }
+
+/* Ceiling/floor bar */
+.ceilingFloorBar {
+  margin-top: 8px;
+}
+
+.cfBarLabel {
+  display: flex;
+  justify-content: space-between;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 9px;
+  margin-bottom: 3px;
+}
+
+.cfBarTrack {
+  height: 6px;
+  background: #141c2b;
+  border-radius: 3px;
+  position: relative;
+  overflow: hidden;
+}
+
+.cfBarRange {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+}
+
+.cfBarFloor {
+  height: 2px;
+  background: #ff3d57;
+  opacity: 0.4;
+  border-radius: 1px;
+  flex: 1;
+}
+
+.cfBarCeiling {
+  height: 2px;
+  background: #00e676;
+  opacity: 0.4;
+  border-radius: 1px;
+  flex: 1;
+}
+
+.cfBarCurrent {
+  position: absolute;
+  top: -1px;
+  height: 8px;
+  width: 6px;
+  border-radius: 3px;
+  transform: translateX(-50%);
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+}
+
+/* Crypto mode */
+.cryptoModeNote {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  color: #374151;
+  padding: 16px;
+}
+
+/* Skeleton */
+.skeleton {
+  padding: 10px;
+}
+
+.skeletonLine {
+  background: #141c2b;
+  border-radius: 3px;
+  margin-bottom: 8px;
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.7; }
+}
+
+/* Error */
+.errorState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  gap: 8px;
+  padding: 16px;
+  text-align: center;
+}
+
+.errorIcon {
+  font-size: 20px;
+  opacity: 0.5;
+}
+
+.errorMsg {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: #ff3d57;
+}

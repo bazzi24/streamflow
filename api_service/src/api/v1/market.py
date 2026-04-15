@@ -1,0 +1,17 @@
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+from ...database import get_streaming_db
+from ...services.stock_service import StockService
+from ...schemas.stock import MarketOverviewResponse
+
+router = APIRouter(prefix="/market", tags=["market"])
+
+
+def get_stock_service(db: Session = Depends(get_streaming_db)) -> StockService:
+    return StockService(db)
+
+
+@router.get("/overview", response_model=MarketOverviewResponse)
+def get_market_overview(svc: StockService = Depends(get_stock_service)):
+    """Index values + top gainers + top losers."""
+    return svc.get_market_overview()

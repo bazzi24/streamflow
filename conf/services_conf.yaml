@@ -1,0 +1,13 @@
+mysql:
+  name: 'data'
+  user: 'root'
+  password: 'stream_flow'
+  host: 'mysql'
+  port: 3306
+  max_connection: 100
+  stale_timeout: 300
+  max_allowed_packet: 107374182
+
+kafka:
+  host: 'kafka'
+  port: 9092

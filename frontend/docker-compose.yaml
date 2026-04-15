@@ -1,0 +1,15 @@
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${EXPOSE_FRONTEND_PORT:-3000}:80"
+    depends_on:
+      - api
+    networks:
+      - streamflow
+
+networks:
+  streamflow:
+    external: true

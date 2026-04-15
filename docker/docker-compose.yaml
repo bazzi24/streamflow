@@ -1,0 +1,237 @@
+services:
+  # ============================================================
+  # INFRASTRUCTURE
+  # ============================================================
+  kafka:
+    image: apache/kafka:latest
+    container_name: kafka
+    ports:
+      - "${EXPOSE_KAFKA_PORT:-9092}:9092"
+    env_file:
+      - ../.env
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@localhost:9093"
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://${KAFKA_ADVERTISED_HOST:-kafka}:9092"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_CLUSTER_ID: "kafka-cluster-1"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_MIN_INSYNC_REPLICAS: 1
+      KAFKA_NUM_PARTITIONS: 6
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - streamflow
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/opt/kafka/bin/kafka-broker-api-versions.sh", "--bootstrap-server", "localhost:9092"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - "${EXPOSE_KAFKA_UI_PORT:-8080}:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: "local"
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka:9092"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - streamflow
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.0.39
+    container_name: mysql
+    env_file:
+      - ../.env
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-stream_flow}
+      MYSQL_ROOT_HOST: "%"
+    command:
+      --max_connections=1000
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --default-authentication-plugin=mysql_native_password
+      --tls_version="TLSv1.2,TLSv1.3"
+      --binlog_expire_logs_seconds=604800
+    ports:
+      - "${EXPOSE_MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - streamflow
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-stream_flow}"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+    restart: unless-stopped
+
+  spark-master:
+    image: apache/spark:3.5.1
+    container_name: spark-master
+    command:
+      - /opt/spark/bin/spark-class
+      - org.apache.spark.deploy.master.Master
+    environment:
+      SPARK_NO_DAEMONIZE: "true"
+    ports:
+      - "${EXPOSE_SPARK_MASTER_UI_PORT:-8082}:8080"
+      - "${EXPOSE_SPARK_MASTER_PORT:-7077}:7077"
+    volumes:
+      - ../lib:/opt/spark/jars/custom
+    networks:
+      - streamflow
+    restart: unless-stopped
+
+  spark-worker:
+    image: apache/spark:3.5.1
+    container_name: spark-worker
+    command:
+      - /opt/spark/bin/spark-class
+      - org.apache.spark.deploy.worker.Worker
+      - --memory
+      - "${SPARK_WORKER_MEMORY:-4g}"
+      - --cores
+      - "${SPARK_WORKER_CORES:-2}"
+      - spark://spark-master:7077
+    environment:
+      SPARK_NO_DAEMONIZE: "true"
+    volumes:
+      - ../lib:/opt/spark/jars/custom
+    depends_on:
+      - spark-master
+    networks:
+      - streamflow
+    restart: unless-stopped
+
+  # ============================================================
+  # KAFKA PRODUCER  (all 5 channels in one container)
+  # ============================================================
+  producer:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: producer
+    env_file:
+      - ../.env
+    command: ["kafkaStream/producer_unified.py"]
+    volumes:
+      - ../logs:/streamflow/logs
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - streamflow
+    restart: unless-stopped
+
+  # ============================================================
+  # KAFKA CONSUMER  (all 5 topics in one container)
+  # ============================================================
+  consumer:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: consumer
+    env_file:
+      - ../.env
+    command: ["consumer/consumer_unified.py"]
+    volumes:
+      - ../logs:/streamflow/logs
+    depends_on:
+      kafka:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+    networks:
+      - streamflow
+    restart: unless-stopped
+
+  # ============================================================
+  # API SERVICE  (FastAPI — REST + WebSocket)
+  # ============================================================
+  api:
+    build:
+      context: ../api_service
+      dockerfile: Dockerfile
+    container_name: api
+    ports:
+      - "${EXPOSE_API_PORT:-8000}:8000"
+    env_file:
+      - ../.env
+    environment:
+      DB_USER: root
+      DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:-stream_flow}
+      SECRET_KEY: ${SECRET_KEY:-streamflow-super-secret-key-change-in-production}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+    networks:
+      - streamflow
+    restart: unless-stopped
+
+  # ============================================================
+  # FRONTEND  (React + Vite, served by Nginx)
+  # ============================================================
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: frontend
+    ports:
+      - "${EXPOSE_FRONTEND_PORT:-3000}:80"
+    depends_on:
+      - api
+    networks:
+      - streamflow
+    restart: unless-stopped
+
+  # ============================================================
+  # INDEX LOADER  — fetches VN30/HNX30 from SSI API → MySQL
+  # Run: docker compose -f docker/docker-compose.yaml run --rm load-index
+  # ============================================================
+  load-index:
+    profiles:
+      - manual
+    build:
+      context: ..
+      dockerfile: dataSSI/Dockerfile
+    container_name: load-index
+    env_file:
+      - ../.env
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-stream_flow}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - streamflow
+    restart: "no"
+
+volumes:
+  mysql_data:
+    driver: local
+  kafka_data:
+    driver: local
+
+networks:
+  streamflow:
+    driver: bridge

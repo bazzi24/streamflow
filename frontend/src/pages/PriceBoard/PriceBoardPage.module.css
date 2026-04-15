@@ -1,0 +1,759 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   StreamFlow — SSI iBoard-style Price Board
+   Dark terminal theme with data-dense Bloomberg-style layout
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── CSS Variables ──────────────────────────────────────────────────────── */
+.boardRoot {
+  /* Layout */
+  --bg-primary: #0b0e17;
+  --bg-row-a: #101520;
+  --bg-row-b: #0d1120;
+  --bg-hover: #141a28;
+  --bg-selected: #1a2235;
+
+  /* Accents */
+  --accent-cyan: #00d4ff;
+  --accent-green: #00e676;
+  --accent-red: #ff3d57;
+  --accent-purple: #f23aff;
+  --accent-yellow: #fdff12;
+  --accent-blue: #00c9ff;
+
+  /* Borders */
+  --border: rgba(255, 255, 255, 0.06);
+  --border-col: rgba(255, 255, 255, 0.04);
+  --border-header: rgba(255, 255, 255, 0.08);
+
+  /* Text */
+  --text-primary: #ffffff;
+  --text-secondary: #ffffff;
+  --text-muted: #e0e0e0;
+
+  /* Fonts */
+  --font-mono: "Calibri", "Segoe UI", sans-serif;
+  --font-data: "Calibri", "Segoe UI", sans-serif;
+}
+
+/* ── Root Layout ────────────────────────────────────────────────────── */
+.boardRoot {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-data);
+  overflow: hidden;
+  position: relative;
+  box-sizing: border-box;
+}
+
+/* ── SSI Header ───────────────────────────────────────────────────── */
+.topHeader {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+}
+
+/* ── Row 1: Top Utility Bar ─────────────────────────────────────── */
+.topBar {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  flex-shrink: 0;
+  background: #0e1220;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+/* Logo */
+.logoSection {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 0 8px;
+  height: 100%;
+  border-right: 1px solid rgba(255,255,255,0.06);
+  flex-shrink: 0;
+}
+
+.logoImg {
+  height: 20px;
+  width: auto;
+  object-fit: contain;
+}
+
+.logoText {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--accent-cyan);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.logoSub {
+  font-size: 8px;
+  color: rgba(255,255,255,0.3);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* Scrolling Marquee */
+.marquee {
+  flex: 1;
+  overflow: hidden;
+  padding: 0 12px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.marqueeInner {
+  display: flex;
+  gap: 48px;
+  white-space: nowrap;
+  animation: marqueeScroll 40s linear infinite;
+  font-size: 10px;
+  color: rgba(255,255,255,0.3);
+}
+
+.marqueeItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.marqueeDot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.2);
+  flex-shrink: 0;
+}
+
+@keyframes marqueeScroll {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+/* Top bar icons */
+.topBarIcons {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px;
+  flex-shrink: 0;
+  height: 100%;
+  border-left: 1px solid rgba(255,255,255,0.06);
+}
+
+.topBarIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: rgba(255,255,255,0.4);
+  transition: all 0.1s;
+  flex-shrink: 0;
+}
+
+.topBarIcon:hover {
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.8);
+}
+
+.topBarIcon svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ── Row 2: Nav / Tab Bar ─────────────────────────────────────────── */
+.navBar {
+  display: flex;
+  align-items: stretch;
+  height: 30px;
+  flex-shrink: 0;
+  background: #0b0f1c;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.navSearch {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  border-right: 1px solid rgba(255,255,255,0.05);
+  flex-shrink: 0;
+}
+
+.navSearchInput {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 4px;
+  color: rgba(255,255,255,0.8);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 8px 2px 22px;
+  width: 120px;
+  outline: none;
+}
+
+.navSearchInput:focus {
+  border-color: rgba(0,212,255,0.4);
+  background: rgba(255,255,255,0.09);
+}
+
+.navSearchInput::placeholder { color: rgba(255,255,255,0.3); }
+
+.navSearchIcon {
+  position: absolute;
+  left: 18px;
+  color: rgba(255,255,255,0.3);
+  width: 11px;
+  height: 11px;
+  pointer-events: none;
+}
+
+.navTabs {
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.navTabs::-webkit-scrollbar { display: none; }
+
+.navTab {
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.8);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.1s;
+  white-space: nowrap;
+  letter-spacing: 0.03em;
+  height: 100%;
+}
+
+.navTab:hover {
+  color: rgba(255,255,255,0.8);
+  background: rgba(255,255,255,0.04);
+}
+
+.navTab.active {
+  color: var(--accent-cyan);
+  border-bottom-color: var(--accent-cyan);
+  background: rgba(0,212,255,0.05);
+}
+
+/* Clock in nav bar */
+.navClock {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  margin-left: auto;
+  flex-shrink: 0;
+  border-left: 1px solid rgba(255,255,255,0.05);
+  height: 100%;
+}
+
+.navClockTime {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.navClockDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent-green);
+  box-shadow: 0 0 5px rgba(0,230,118,0.6);
+  flex-shrink: 0;
+}
+
+/* ── Row 3: Market Ticker ────────────────────────────────────────── */
+.marketTicker {
+  display: flex;
+  align-items: stretch;
+  height: 88px;
+  flex-shrink: 0;
+  background: #0d1220;
+}
+
+/* Index cards section */
+.tickerCards {
+  display: flex;
+  align-items: stretch;
+  flex: 1;
+  overflow: hidden;
+}
+
+.tickerCard {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex: 1;
+  padding: 8px 14px;
+  border-right: 1px solid rgba(255,255,255,0.04);
+  overflow: hidden;
+  background: #0d1220;
+}
+
+.tickerCard:last-child {
+  border-right: none;
+}
+
+.tickerCard.up { border-left: 2px solid var(--accent-green); }
+.tickerCard.down { border-left: 2px solid var(--accent-red); }
+
+.tickerCardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tickerBadge {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.tickerValue {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tickerPct {
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tickerPct.up { color: var(--accent-green); }
+.tickerPct.down { color: var(--accent-red); }
+
+/* Sparkline */
+.tickerSparkline {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Ticker stats row */
+.tickerStats {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tickerVol {
+  font-size: 9px;
+  color: rgba(255,255,255,0.35);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tickerBreadth {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.tickerAdv {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--accent-green);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tickerSep {
+  font-size: 8px;
+  color: rgba(255,255,255,0.2);
+}
+
+.tickerDec {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--accent-red);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Market breadth panel */
+.marketBreadth {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: 260px;
+  min-width: 260px;
+  flex-shrink: 0;
+  padding: 8px 14px;
+  border-left: 1px solid rgba(255,255,255,0.05);
+  background: #0d1220;
+  gap: 6px;
+}
+
+.breadthHeader {
+  font-size: 9px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.35);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.breadthRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.breadthSymbol {
+  font-size: 9px;
+  font-weight: 400;
+  color: rgba(255,255,255,0.5);
+  text-transform: uppercase;
+  width: 52px;
+  flex-shrink: 0;
+}
+
+.breadthValues {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.breadthUp {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent-green);
+  font-variant-numeric: tabular-nums;
+  min-width: 28px;
+  text-align: right;
+}
+
+.breadthSep {
+  font-size: 9px;
+  color: rgba(255,255,255,0.2);
+}
+
+.breadthDown {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent-red);
+  font-variant-numeric: tabular-nums;
+  min-width: 28px;
+  text-align: right;
+}
+
+/* ── Table ─────────────────────────────────────────────────── */
+.tableWrapper {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.1) transparent;
+}
+
+.tableWrapper::-webkit-scrollbar { width: 5px; height: 5px; }
+.tableWrapper::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+
+/* ── Data Table ───────────────────────────────────────────────── */
+.dataTable {
+  border-collapse: collapse;
+  border-spacing: 0;
+  table-layout: fixed;
+  width: 100%;
+  min-width: 1424px;
+}
+
+/* ── Group Header Row ─────────────────────────────────────────── */
+.tableGroupRow {
+  background: #0a0e1a;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.thGroup {
+  padding: 0 4px;
+  height: 22px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: none;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  border-right: 1px solid var(--border-col);
+  vertical-align: middle;
+  color: #fff;
+  user-select: none;
+}
+
+.thGroupGreen { color: var(--accent-green) !important; }
+.thGroupRed   { color: var(--accent-red) !important; }
+.thGroupBlue  { color: var(--accent-blue)  !important; }
+.thGroupMuted { color: #fff !important; }
+
+/* ── Sub Header Row ─────────────────────────────────────────── */
+.tableSubRow {
+  background: #0d1120;
+  border-bottom: 2px solid var(--border-header);
+}
+
+.thSub {
+  padding: 0 8px 0 4px;
+  height: 28px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: #fff;
+  text-transform: none;
+  letter-spacing: 0.05em;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  border-right: 1px solid var(--border-col);
+  vertical-align: middle;
+  user-select: none;
+}
+
+.thSub.sortable { cursor: pointer; }
+.thSub.sortable:hover { color: var(--accent-cyan); background: rgba(0,212,255,0.1); }
+
+/* White text color for sub-header cells (used as headerColor) */
+.subWhite { color: #fff !important; }
+
+/* ── Sort Icon ─────────────────────────────────────────────── */
+.sortIcon {
+  margin-left: 2px;
+  opacity: 0.5;
+  font-size: 8px;
+}
+
+/* ── Price Row ──────────────────────────────────────────────── */
+.priceRow {
+  height: 26px;
+  border-bottom: 1px solid var(--border-col);
+  transition: background 0.08s;
+  cursor: pointer;
+}
+
+.priceRow:hover { background: var(--bg-hover); }
+.priceRow.selected { background: var(--bg-selected); }
+.priceRow.evenRow { background: var(--bg-row-a); }
+.priceRow.oddRow { background: var(--bg-row-b); }
+.priceRow:hover.evenRow,
+.priceRow:hover.oddRow { background: var(--bg-hover); }
+.priceRow.selected.evenRow,
+.priceRow.selected.oddRow { background: var(--bg-selected); }
+
+/* Matched price row-level color overrides */
+.priceRow.upRow td.col-gia    { color: var(--accent-green); }
+.priceRow.downRow td.col-gia  { color: var(--accent-red); }
+.priceRow.neutralRow td.col-gia { color: var(--text-primary); }
+
+/* ── Table Cell ─────────────────────────────────────────────── */
+.priceCell {
+  padding: 0 8px 0 4px;
+  font-family: var(--font-data);
+  font-size: 10px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  border-right: 1px solid var(--border-col);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  min-width: 0;
+  vertical-align: middle;
+}
+
+/* ── Column Width Tokens ────────────────────────────────────── */
+.col-ck       { width: 50px;  text-align: left;   padding-left: 6px; font-weight: 500; color: var(--text-primary); }
+.col-tran     { width: 40px;  color: var(--accent-purple); font-weight: 500; }
+.col-san      { width: 40px;  color: var(--accent-blue);   font-weight: 500; }
+.col-tc       { width: 40px;  color: var(--text-secondary); }
+/* Buy side — green */
+.col-bid3     { width: 54px;  color: var(--accent-green); }
+.col-kl3      { width: 62px;  color: var(--text-primary); }
+.col-bid2     { width: 54px;  color: var(--accent-green); }
+.col-kl2      { width: 62px;  color: var(--text-primary); }
+.col-bid1     { width: 54px;  color: var(--accent-green); }
+.col-kl1      { width: 62px;  color: var(--text-primary); }
+/* Matched */
+.col-gia      { width: 62px;  font-weight: 500; }
+.col-kl       { width: 62px;  color: var(--text-primary); }
+/* Change & pct — inside matched section */
+.col-change   { width: 54px;  font-weight: 500; }
+.col-pct      { width: 54px;  font-weight: 500; }
+/* Sell side — red */
+.col-ask1     { width: 54px;  color: var(--accent-red); }
+.col-akl1     { width: 62px;  color: var(--text-primary); }
+.col-ask2     { width: 54px;  color: var(--accent-red); }
+.col-akl2     { width: 62px;  color: var(--text-primary); }
+.col-ask3     { width: 54px;  color: var(--accent-red); }
+.col-akl3     { width: 62px;  color: var(--text-primary); }
+/* Stats */
+.col-tongkl   { width: 70px;  color: var(--text-primary); }
+.col-cao      { width: 45px;  color: var(--accent-green); }
+.col-thap     { width: 45px;  color: var(--accent-red); }
+.col-nnmua    { width: 64px;  color: var(--accent-blue); }
+.col-nnban    { width: 64px;  color: var(--accent-blue); }
+.col-room     { width: 80px;  color: var(--accent-yellow); border-right: none; }
+
+/* ── Color Variants ─────────────────────────────────────────── */
+.cellUp      { color: var(--accent-green) !important; }
+.cellDown    { color: var(--accent-red)   !important; }
+.cellNeutral { color: var(--accent-yellow) !important; }
+.cellPurple  { color: var(--accent-purple) !important; }
+.cellCyan    { color: var(--accent-blue)   !important; }
+.cellGreen   { color: var(--accent-green) !important; }
+.cellRed     { color: var(--accent-red)   !important; }
+.cellWhite   { color: var(--text-primary); }
+.cellMuted   { color: var(--text-muted); }
+.cellYellow  { color: var(--accent-yellow); }
+.fontBold    { font-weight: 500 !important; }
+
+/* Sort active */
+.sortActive { color: var(--accent-cyan) !important; }
+
+/* ── Symbol Cell ────────────────────────────────────────────── */
+.symbolCell {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+}
+
+/* ── Warrant / ETF Badges ────────────────────────────────────── */
+.warrantBadge,
+.etfBadge {
+  display: inline-block;
+  margin-left: 3px;
+  padding: 0 3px;
+  font-size: 8px;
+  font-weight: 500;
+  font-family: var(--font-mono);
+  border-radius: 2px;
+  vertical-align: middle;
+  line-height: 1.4;
+}
+.warrantBadge {
+  background: rgba(251,191,36,0.15);
+  color: var(--accent-yellow);
+  border: 1px solid rgba(251,191,36,0.3);
+}
+.etfBadge {
+  background: rgba(0,212,255,0.1);
+  color: var(--accent-cyan);
+  border: 1px solid rgba(0,212,255,0.25);
+}
+
+/* ── Sticky Columns ─────────────────────────────────────────── */
+.stickyCol {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: inherit;
+}
+
+.priceRow.evenRow td.stickyCol { background: var(--bg-row-a); }
+.priceRow.oddRow td.stickyCol  { background: var(--bg-row-b); }
+.priceRow:hover td.stickyCol    { background: var(--bg-hover); }
+.priceRow.selected td.stickyCol { background: var(--bg-selected); }
+
+.stickyRight {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  background: inherit;
+  border-right: none;
+}
+
+.priceRow.evenRow td.stickyRight { background: var(--bg-row-a); }
+.priceRow.oddRow td.stickyRight  { background: var(--bg-row-b); }
+.priceRow:hover td.stickyRight  { background: var(--bg-hover); }
+.priceRow.selected td.stickyRight { background: var(--bg-selected); }
+
+/* ── Loading / Empty States ────────────────────────────────── */
+.loadingRow td {
+  height: 32px;
+  border-bottom: 1px solid var(--border-col);
+}
+
+.loadingCell {
+  text-align: center;
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: rgba(255,255,255,0.35);
+  padding: 0 8px;
+}
+
+.emptyRow td {
+  height: 200px;
+}
+
+.emptyCell {
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: rgba(255,255,255,0.35);
+}
+
+/* ── Scanline Overlay ─────────────────────────────────────────── */
+.boardRoot::before {
+  content: "";
+  /* position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,212,255,0.015) 2px,
+    rgba(0,212,255,0.015) 4px
+  );
+  pointer-events: none; */
+  z-index: 9999;
+}
+
+/* ── Mini chart in header ──────────────────────────────────────────── */
+.sparklineContainer {
+  width: 100%;
+  height: 60px;
+  position: relative;
+}
+
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ── Utility ──────────────────────────────────────────────────────── */
+.flex1 { flex: 1; }
+.overflowHidden { overflow: hidden; }
+.minW0 { min-width: 0; }

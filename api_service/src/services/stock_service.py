@@ -1,0 +1,662 @@
+from sqlalchemy.orm import Session
+from sqlalchemy import func, desc
+from ..models import (
+    StreamingDataTrade, StreamingDataQuote, StreamingIndexData,
+    SymbolDim, StockTradeFact, StockOrderBookFact, MarketIndexFact,
+    Candlestick1M, Candlestick1D,
+)
+from ..database import get_streaming_db, get_db
+from ..schemas.stock import (
+    StockQuote, OrderBook, OrderBookLevel, OHLCVBar, SymbolMeta,
+    StockSummary, IndexOverview, MarketOverviewResponse, BidAskLevel,
+)
+from datetime import timezone, timedelta
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Vietnam is UTC+7 — Naive datetime from MySQL is stored in Asia/Ho_Chi_Minh time.
+VIETNAM_TZ = timezone(timedelta(hours=7))
+
+def _to_ms(dt) -> int:
+    """
+    Convert a naive datetime to Unix ms.
+    - DATETIME (time_start from candlestick_1m): MySQL stores local Vietnam time → treat as UTC+7.
+    - DATE    (trading_date from candlestick_1d): midnight in MySQL → market open (09:00 Vietnam = 02:00 UTC).
+      Detected by checking if hour/minute/second are all 0.
+    """
+    if dt is None:
+        return 0
+    # DATE (pure date, e.g. 2026-04-15 00:00:00) → shift to 09:00 Vietnam market open
+    if dt.hour == 0 and dt.minute == 0 and dt.second == 0:
+        dt = dt.replace(hour=9)
+    return int(dt.replace(tzinfo=VIETNAM_TZ).timestamp() * 1000)
+
+
+# ── Interval helpers ─────────────────────────────────────────────────────────────
+
+def _interval_to_seconds(interval: str) -> int:
+    """Convert a timeframe string (1m, 5m, 1h, 1D, 1W, 1M …) to seconds."""
+    unit = interval[-1]
+    num = int(interval[:-1])
+    if unit == "m":
+        return num * 60
+    if unit == "h":
+        return num * 3600
+    if unit == "D":
+        return num * 86400
+    if unit == "W":
+        return num * 604800
+    if unit == "M":
+        # Approximate 1 month = 30 days for bucketing purposes
+        return num * 2592000
+    # Fallback: treat as minutes
+    return num * 60
+
+
+# Vietnam market open = 09:00 local = 02:00 UTC.
+# When bucketing D/W/M candles, align bucket start to Vietnam market open
+# instead of midnight (UTC).  Offset = 2 hours in milliseconds.
+_VIETNAM_OPEN_MS = 2 * 3600 * 1000  # 2 hours → milliseconds
+
+
+def _f(val, *, scale=1) -> float:
+    if val is None:
+        return 0.0
+    try:
+        return float(val) / scale
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _i(val) -> int:
+    if val is None:
+        return 0
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return 0
+
+
+class StockService:
+    """Reads live data from streaming DB (populated by Kafka consumers).
+    Falls back to DW tables (fact.*, dim.*) if streaming is empty.
+    """
+
+    def __init__(self, db: Session):
+        self.db = db
+
+    # ── Symbols ──────────────────────────────────────────────────────────
+
+    def list_symbols(self) -> list[SymbolMeta]:
+        # Try DW first
+        rows = self.db.query(SymbolDim).filter(
+            SymbolDim.symbol.isnot(None)
+        ).all()
+        if rows:
+            return [
+                SymbolMeta(symbol=r.symbol or "", symbol_name=r.symbol_name or "", sector=r.sector)
+                for r in rows
+            ]
+        # Fall back to streaming distinct symbols
+        rows = self.db.query(
+            StreamingDataTrade.symbol,
+            func.max(StreamingDataTrade.trading_date).label("latest"),
+        ).group_by(StreamingDataTrade.symbol).all()
+        return [
+            SymbolMeta(symbol=r.symbol or "", symbol_name=r.symbol or "", sector=None)
+            for r in rows if r.symbol
+        ]
+
+    def get_symbol_meta(self, symbol: str) -> SymbolMeta | None:
+        row = self.db.query(SymbolDim).filter(
+            SymbolDim.symbol == symbol
+        ).first()
+        if row:
+            return SymbolMeta(
+                symbol=row.symbol or "",
+                symbol_name=row.symbol_name or "",
+                sector=row.sector,
+            )
+        # Fall back to streaming
+        row = self.db.query(StreamingDataTrade).filter(
+            StreamingDataTrade.symbol == symbol
+        ).first()
+        if row:
+            return SymbolMeta(symbol=row.symbol or "", symbol_name=row.symbol or "", sector=None)
+        return None
+
+    # ── Quote ────────────────────────────────────────────────────────────
+
+    def get_quote(self, symbol: str) -> StockQuote | None:
+        # Try streaming first (most up-to-date)
+        row = (
+            self.db.query(StreamingDataTrade)
+            .filter(StreamingDataTrade.symbol == symbol)
+            .order_by(desc(StreamingDataTrade.id))
+            .first()
+        )
+        if row:
+            return StockQuote(
+                symbol=symbol,
+                last_price=_f(row.last_price),
+                change=_f(row.change, scale=1000),
+                ratio_change=_f(row.ratio_change),
+                volume=_i(row.total_vol),
+                value=_f(row.total_val),
+                highest=_f(row.highest),
+                lowest=_f(row.lowest),
+                ref_price=_f(row.ref_price),
+                ceiling=_f(row.ceiling),
+                floor=_f(row.floor),
+                time=row.time or "",
+            )
+        # Fall back to DW
+        sym = self.db.query(SymbolDim).filter(
+            SymbolDim.symbol == symbol
+        ).first()
+        if not sym:
+            return None
+        max_date_key = (
+            self.db.query(func.max(StockTradeFact.tradingdate_key))
+            .filter(StockTradeFact.symbol_key == sym.symbol_key)
+            .scalar()
+        )
+        if not max_date_key:
+            return None
+        row = (
+            self.db.query(StockTradeFact)
+            .filter(
+                StockTradeFact.symbol_key == sym.symbol_key,
+                StockTradeFact.tradingdate_key == max_date_key,
+            )
+            .order_by(desc(StockTradeFact.time_key))
+            .first()
+        )
+        if not row:
+            return None
+        return StockQuote(
+            symbol=symbol,
+            last_price=_f(row.last_price),
+            change=_f(row.change, scale=1000),
+            ratio_change=_f(row.ratio_change),
+            volume=_i(row.total_vol),
+            value=_f(row.total_val),
+            highest=_f(row.highest),
+            lowest=_f(row.lowest),
+            ref_price=_f(row.ref_price),
+            ceiling=_f(row.ceiling),
+            floor=_f(row.floor),
+            time="",
+        )
+
+    # ── All symbols latest prices ────────────────────────────────────────
+
+    # ETF prefix list used in warrant detection (must stay in sync with frontend)
+    _ETF_PREFIXES = {"VF", "E1", "SSIAM", "VOF", "VFA", "VCA"}
+
+    @staticmethod
+    def _is_warrant(symbol: str) -> bool:
+        """Warrant: >3 chars, last 4 chars are digits, not an ETF prefix."""
+        return (
+            len(symbol) > 3
+            and symbol[-4:].isdigit()
+            and symbol[:2] not in StockService._ETF_PREFIXES
+        )
+
+    def list_latest_quotes(
+        self, exchange: str | None = None, segment: str | None = None
+    ) -> list[StockSummary]:
+        """Get latest price for every symbol — streaming DB.
+        Optionally filter by exchange (e.g. 'HOSE', 'HNX', 'UPCOM').
+        Optionally filter by segment ('WARRANT', 'ETF').
+        When exchange is 'VN30' or 'HNX30', filters to index constituents
+        from data.indexcomponent.
+        Warrants are excluded from regular exchange listings.
+        """
+        from ..models import StreamingDataQuote, StreamingForeignRoom, DataIndexComponent
+
+        # ── VN30 / HNX30: resolve index constituents ──────────────────────────
+        index_symbols: set[str] | None = None
+        if exchange in ("VN30", "HNX30"):
+            latest_date = self.db.query(
+                func.max(DataIndexComponent.effective_date)
+            ).filter(DataIndexComponent.index_id == exchange).scalar()
+            if latest_date:
+                rows = (
+                    self.db.query(DataIndexComponent.symbol)
+                    .filter(
+                        DataIndexComponent.index_id == exchange,
+                        DataIndexComponent.effective_date == latest_date,
+                    )
+                    .all()
+                )
+                index_symbols = {r.symbol for r in rows if r.symbol}
+            logger.debug("Index %s constituents at %s: %d symbols", exchange, latest_date, len(index_symbols or []))
+
+        # Subquery: latest data_trade row per symbol
+        trade_subq = (
+            self.db.query(
+                StreamingDataTrade.symbol,
+                StreamingDataTrade.exchange,
+                func.max(StreamingDataTrade.id).label("max_id"),
+            )
+            .group_by(StreamingDataTrade.symbol, StreamingDataTrade.exchange)
+        )
+        if exchange and exchange not in ("VN30", "HNX30"):
+            trade_subq = trade_subq.filter(StreamingDataTrade.exchange == exchange)
+        trade_subq = trade_subq.subquery()
+
+        # Latest data_quote row per symbol (for bid/ask)
+        quote_subq = (
+            self.db.query(
+                StreamingDataQuote.symbol_id,
+                func.max(StreamingDataQuote.id).label("max_qid"),
+            )
+            .group_by(StreamingDataQuote.symbol_id)
+            .subquery()
+        )
+
+        # Latest foreign_room row per symbol (for nn_mua, nn_ban, room)
+        foreign_subq = (
+            self.db.query(
+                StreamingForeignRoom.symbol,
+                func.max(StreamingForeignRoom.id).label("max_fid"),
+            )
+            .group_by(StreamingForeignRoom.symbol)
+            .subquery()
+        )
+
+        trade_rows = (
+            self.db.query(StreamingDataTrade)
+            .join(trade_subq, StreamingDataTrade.id == trade_subq.c.max_id)
+            .all()
+        )
+
+        # ── Apply VN30/HNX30 symbol filter ─────────────────────────────────
+        if index_symbols is not None:
+            trade_rows = [r for r in trade_rows if r.symbol in index_symbols]
+
+        quote_rows = (
+            self.db.query(StreamingDataQuote)
+            .join(quote_subq, StreamingDataQuote.id == quote_subq.c.max_qid)
+            .all()
+        )
+
+        foreign_rows = (
+            self.db.query(StreamingForeignRoom)
+            .join(foreign_subq, StreamingForeignRoom.id == foreign_subq.c.max_fid)
+            .all()
+        )
+        foreign_map: dict[str, StreamingForeignRoom] = {
+            r.symbol: r for r in foreign_rows if r.symbol
+        }
+
+        quote_map: dict[str, StreamingDataQuote] = {
+            r.symbol_id: r for r in quote_rows if r.symbol_id
+        }
+
+        summaries = []
+        for r in trade_rows:
+            symbol = r.symbol or ""
+
+            # Warrant detection
+            is_warrant = self._is_warrant(symbol)
+            is_etf = symbol[:2] in self._ETF_PREFIXES or symbol[:5] in self._ETF_PREFIXES
+
+            # Segment filter: exclude warrants from regular exchange tabs
+            if segment == "WARRANT":
+                if not is_warrant:
+                    continue
+            elif segment == "ETF":
+                if not is_etf:
+                    continue
+            else:
+                # HOSE/HNX/UPCOM — exclude warrants
+                if is_warrant:
+                    continue
+
+            quote = quote_map.get(symbol)
+            foreign = foreign_map.get(symbol)
+
+            # bid_ask_levels: buy-side levels only [best, 2nd, 3rd]
+            bid_ask_levels: list[BidAskLevel] = []
+            # ask_levels: sell-side levels only [best, 2nd, 3rd]
+            ask_levels: list[BidAskLevel] = []
+
+            if quote:
+                for i in range(1, 4):
+                    bp = getattr(quote, f"bid_price{i}", None)
+                    bv = getattr(quote, f"bid_vol{i}", None)
+                    ap = getattr(quote, f"ask_price{i}", None)
+                    av = getattr(quote, f"ask_vol{i}", None)
+                    # Buy side
+                    bid_ask_levels.append(
+                        BidAskLevel(
+                            bid_price=_f(bp),
+                            bid_vol=_i(bv),
+                            ask_price=0,
+                            ask_vol=0,
+                        )
+                    )
+                    # Sell side (only if price is non-zero)
+                    if ap not in (None, 0):
+                        ask_levels.append(
+                            BidAskLevel(
+                                bid_price=0,
+                                bid_vol=0,
+                                ask_price=_f(ap),
+                                ask_vol=_i(av),
+                            )
+                        )
+
+            best_bid_price = bid_ask_levels[0].bid_price if len(bid_ask_levels) >= 1 else 0
+            best_bid_vol   = bid_ask_levels[0].bid_vol   if len(bid_ask_levels) >= 1 else 0
+            best_ask_price = ask_levels[0].ask_price if len(ask_levels) >= 1 else 0
+            best_ask_vol   = ask_levels[0].ask_vol     if len(ask_levels) >= 1 else 0
+
+            summaries.append(
+                StockSummary(
+                    symbol=symbol,
+                    symbol_name=r.symbol or "",
+                    exchange=r.exchange or "",
+                    last_price=_f(r.last_price),
+                    change=_f(r.change, scale=1000),
+                    ratio_change=_f(r.ratio_change, scale=1000) * 100,
+                    volume=_i(r.total_vol),
+                    last_vol=_i(r.last_vol),
+                    total_vol=_i(r.total_vol),
+                    value=_f(r.total_val),
+                    ceiling=_f(r.ceiling),
+                    floor=_f(r.floor),
+                    ref_price=_f(r.ref_price),
+                    best_bid_price=best_bid_price,
+                    best_bid_vol=best_bid_vol,
+                    best_ask_price=best_ask_price,
+                    best_ask_vol=best_ask_vol,
+                    bid_ask_levels=bid_ask_levels,
+                    ask_levels=ask_levels,
+                    matched_price=_f(r.est_matched_price),
+                    time=r.time or "",
+                    highest=_f(r.highest),
+                    lowest=_f(r.lowest),
+                    nn_mua=_i(foreign.buy_vol) if foreign else 0,
+                    nn_ban=_i(foreign.sell_vol) if foreign else 0,
+                    room=(_i(foreign.current_room) if foreign else 0),
+                    is_warrant=is_warrant,
+                    is_etf=is_etf,
+                )
+            )
+        return summaries
+
+    # ── Order Book ──────────────────────────────────────────────────────
+
+    def get_orderbook(self, symbol: str) -> OrderBook | None:
+        row = (
+            self.db.query(StreamingDataQuote)
+            .filter(StreamingDataQuote.symbol_id == symbol)
+            .order_by(desc(StreamingDataQuote.id))
+            .first()
+        )
+        if not row:
+            return OrderBook(symbol=symbol, bids=[], asks=[], time="")
+
+        bids, asks = [], []
+        for i in range(1, 11):
+            bp = getattr(row, f"bid_price{i}", None)
+            bv = getattr(row, f"bid_vol{i}", None)
+            ap = getattr(row, f"ask_price{i}", None)
+            av = getattr(row, f"ask_vol{i}", None)
+            if bp is not None:
+                bids.append(OrderBookLevel(price=_f(bp), volume=_i(bv)))
+            if ap is not None:
+                asks.append(OrderBookLevel(price=_f(ap), volume=_i(av)))
+
+        return OrderBook(
+            symbol=symbol,
+            bids=bids[:10],
+            asks=asks[:10],
+            time=row.time or "",
+        )
+
+    # ── OHLCV ──────────────────────────────────────────────────────────
+
+    def get_ohlcv(self, symbol: str, interval: str = "5m", limit: int = 200) -> list[OHLCVBar]:
+        """Intraday OHLCV — reads pre-computed 1m candles from candlestick_1m,
+        derives larger intervals at query time. Falls back to streaming.data_trade
+        if candlestick_1m is empty.
+
+        Bug fix (Step 2): prior version ordered by INSERTION order (ASC id),
+        returning oldest N ticks instead of the latest N.
+        """
+        # ── 1m candles from candlestick_1m (primary path) ───────────────────
+        rows = (
+            self.db.query(Candlestick1M)
+            .filter(Candlestick1M.symbol == symbol)
+            .order_by(desc(Candlestick1M.time_start))
+            .limit(limit)
+            .all()
+        )
+
+        if rows:
+            # Candlestick1M rows are already in DESC order (latest first);
+            # reverse to chronological for client consumption.
+            rows = list(reversed(rows))
+
+            # For 1m interval, return as-is.
+            if interval == "1m":
+                return [
+                    OHLCVBar(
+                        timestamp=_to_ms(r.time_start),
+                        open=_f(r.open),
+                        high=_f(r.high),
+                        low=_f(r.low),
+                        close=_f(r.close),
+                        volume=_i(r.volume),
+                    )
+                    for r in rows
+                ]
+
+            # Derive larger intervals by bucketing 1m candles.
+            interval_sec = _interval_to_seconds(interval)
+            interval_ms = interval_sec * 1000
+            # For D/W/M, align bucket to Vietnam market open (09:00 local = 02:00 UTC).
+            # Subtract the 2h offset BEFORE bucketing so bucket starts at 02:00 UTC, not midnight.
+            unit = interval[-1]
+            offset_sec = 2 * 3600 if unit in ("D", "W", "M") else 0
+            bars: dict[int, OHLCVBar] = {}
+            for r in rows:
+                ts = _to_ms(r.time_start)
+                ts_sec = ts // 1000
+                bucket_sec = ((ts_sec - offset_sec) // interval_sec) * interval_sec + offset_sec
+                bucket_ms = bucket_sec * 1000
+                if bucket_ms not in bars:
+                    bars[bucket_ms] = OHLCVBar(
+                        timestamp=bucket_ms,
+                        open=_f(r.open),
+                        high=_f(r.high),
+                        low=_f(r.low),
+                        close=_f(r.close),
+                        volume=_i(r.volume),
+                    )
+                else:
+                    b = bars[bucket_ms]
+                    b.high = max(b.high, _f(r.high))
+                    b.low = min(b.low, _f(r.low))
+                    b.close = _f(r.close)
+                    b.volume += _i(r.volume)
+            return sorted(bars.values(), key=lambda x: x.timestamp)
+
+        # ── Fallback: streaming.data_trade (Step 2 corrected ordering) ─────
+        # Order DESC so we get the LATEST `limit` ticks, then reverse for
+        # chronological bucketing — fixes the original ASC-ordering bug.
+        rows = (
+            self.db.query(StreamingDataTrade)
+            .filter(StreamingDataTrade.symbol == symbol)
+            .order_by(desc(StreamingDataTrade.id))
+            .limit(limit)
+            .all()
+        )
+        if not rows:
+            return []
+
+        # Reverse: oldest-first for correct chronological bucketing.
+        rows = list(reversed(rows))
+
+        interval_sec = _interval_to_seconds(interval)
+
+        bars: dict[int, OHLCVBar] = {}
+        for r in rows:
+            try:
+                t = r.time or "00:00:00"
+                h, m, s = t.split(":")
+                secs = int(h) * 3600 + int(m) * 60 + int(s)
+                bucket = (secs // interval_sec) * interval_sec
+            except Exception:
+                bucket = r.id or 0
+
+            if bucket not in bars:
+                bars[bucket] = OHLCVBar(
+                    timestamp=bucket * 1000,
+                    open=_f(r.last_price),
+                    high=_f(r.last_price),
+                    low=_f(r.last_price),
+                    close=_f(r.last_price),
+                    volume=_f(r.last_vol),
+                )
+            else:
+                b = bars[bucket]
+                b.high = max(b.high, _f(r.last_price))
+                b.low = min(b.low, _f(r.last_price))
+                b.close = _f(r.last_price)
+                b.volume += _f(r.last_vol)
+
+        return sorted(bars.values(), key=lambda x: x.timestamp)
+
+    def get_history(self, symbol: str, days: int = 30) -> list[OHLCVBar]:
+        """Daily OHLCV — reads pre-computed daily candles from candlestick_1d.
+        Falls back to streaming.data_trade GROUP BY if candlestick_1d is empty.
+        """
+        from datetime import date as date_cls
+
+        _EPOCH_ORD = date_cls(1970, 1, 1).toordinal()  # pre-compute once
+
+        # ── candlestick_1d (primary path) ───────────────────────────────────
+        rows = (
+            self.db.query(Candlestick1D)
+            .filter(Candlestick1D.symbol == symbol)
+            .order_by(desc(Candlestick1D.trading_date))
+            .limit(days)
+            .all()
+        )
+        if rows:
+            # Return in chronological order (oldest first).
+            rows = list(reversed(rows))
+            # MySQL DATE is midnight UTC — market opens 09:00 Vietnam = 02:00 UTC (+2h)
+            _OPEN_OFFSET_MS = 2 * 3600 * 1000
+            return [
+                OHLCVBar(
+                    # trading_date.toordinal() - EPOCH_ORD = days since 1970-01-01 in seconds → ms
+                    timestamp=(r.trading_date.toordinal() - _EPOCH_ORD) * 86400 * 1000 + _OPEN_OFFSET_MS,
+                    open=_f(r.open),
+                    high=_f(r.high),
+                    low=_f(r.low),
+                    close=_f(r.close),
+                    volume=_i(r.volume),
+                )
+                for r in rows
+            ]
+
+        # ── Fallback: streaming.data_trade GROUP BY (corrected ordering) ────
+        # Order DESC + limit so we get the LATEST `days` trading dates,
+        # then reverse to chronological order — fixes original ASC bug.
+        rows = (
+            self.db.query(
+                StreamingDataTrade.trading_date,
+                func.max(StreamingDataTrade.last_price).label("high"),
+                func.min(StreamingDataTrade.last_price).label("low"),
+                func.sum(StreamingDataTrade.last_vol).label("volume"),
+                func.min(StreamingDataTrade.id).label("min_id"),
+            )
+            .filter(StreamingDataTrade.symbol == symbol)
+            .group_by(StreamingDataTrade.trading_date)
+            .order_by(desc(StreamingDataTrade.trading_date))
+            .limit(days)
+            .all()
+        )
+        if not rows:
+            return []
+
+        # Reverse: oldest-first for chronological output.
+        rows = list(reversed(rows))
+        bars = []
+        for r in rows:
+            open_row = self.db.query(StreamingDataTrade).filter(
+                StreamingDataTrade.id == _i(r.min_id)
+            ).first()
+            open_price = _f(open_row.last_price) if open_row else _f(r.high)
+            ts = int(r.trading_date.toordinal() - _EPOCH_ORD) * 86400 * 1000 if r.trading_date else 0
+            bars.append(
+                OHLCVBar(
+                    timestamp=ts,
+                    open=open_price,
+                    high=_f(r.high),
+                    low=_f(r.low),
+                    close=open_price,
+                    volume=_f(r.volume),
+                )
+            )
+        return bars
+
+    # ── Market Overview ────────────────────────────────────────────────
+
+    def get_market_overview(self) -> MarketOverviewResponse:
+        # Get distinct latest index rows from streaming
+        idx_rows = (
+            self.db.query(
+                StreamingIndexData.index_id,
+                StreamingIndexData.index_name,
+                func.max(StreamingIndexData.id).label("max_id"),
+            )
+            .group_by(StreamingIndexData.index_id, StreamingIndexData.index_name)
+            .subquery()
+        )
+        latest_indices = (
+            self.db.query(StreamingIndexData)
+            .join(idx_rows, StreamingIndexData.id == idx_rows.c.max_id)
+            .all()
+        )
+
+        indices: list[IndexOverview] = []
+        seen = set()
+        for r in latest_indices:
+            key = r.index_id or ""
+            if key in seen:
+                continue
+            seen.add(key)
+            indices.append(
+                IndexOverview(
+                    index_id=key,
+                    index_name=r.index_name or key,
+                    index_value=_f(r.index_value),
+                    change=_f(r.change, scale=1000),
+                    ratio_change=_f(r.ratio_change, scale=1000) * 100,
+                    advances=_i(r.advances),
+                    declines=_i(r.declines),
+                    nochanges=_i(r.nochanges),
+                    total_qtty=_i(r.total_qtty),
+                    total_value=_f(r.total_value),
+                    time=r.time or "",
+                )
+            )
+
+        summaries = self.list_latest_quotes()
+        summaries.sort(key=lambda x: x.ratio_change, reverse=True)
+        top_gainers = summaries[:5]
+        top_losers = summaries[-5:] if len(summaries) >= 5 else summaries
+
+        return MarketOverviewResponse(
+            indices=indices,
+            top_gainers=top_gainers,
+            top_losers=top_losers,
+        )

@@ -1,0 +1,198 @@
+/* OrderBookPanel styles */
+.orderbookPanel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #0f1623;
+  overflow: hidden;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid rgba(0, 212, 255, 0.08);
+  flex-shrink: 0;
+}
+
+.panelTitle {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  font-weight: 600;
+  color: #00d4ff;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.panelSymbol {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  color: #374151;
+  margin-left: auto;
+}
+
+/* Column headers */
+.levelHeader {
+  display: flex;
+  padding: 4px 10px;
+  border-bottom: 1px solid rgba(0, 212, 255, 0.06);
+  flex-shrink: 0;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 9px;
+  color: #374151;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.sideLabel {
+  flex: 1;
+  text-align: right;
+}
+
+.priceLabel {
+  flex: 1;
+  text-align: center;
+  color: #4b5563;
+}
+
+/* Levels container */
+.orderbookLevels {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 212, 255, 0.18) transparent;
+  display: flex;
+  flex-direction: column;
+}
+
+.asksSection {
+  display: flex;
+  flex-direction: column;
+}
+
+.bidsSection {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Level row */
+.levelRow {
+  display: flex;
+  align-items: center;
+  padding: 3px 10px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  position: relative;
+  gap: 4px;
+  transition: background 0.1s;
+}
+
+.levelRow:hover {
+  background: rgba(0, 212, 255, 0.04);
+}
+
+.depthBar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.levelRow.bid .depthBar {
+  right: 0;
+}
+
+.levelRow.ask .depthBar {
+  left: 0;
+}
+
+.levelSide {
+  flex: 1;
+  text-align: right;
+  font-size: 10px;
+  position: relative;
+  z-index: 1;
+}
+
+.levelSide.bid {
+  color: #4b5563;
+}
+
+.levelSide.ask {
+  color: #4b5563;
+}
+
+.levelPrice {
+  flex: 1;
+  text-align: center;
+  color: #e2e8f0;
+  font-weight: 600;
+  position: relative;
+  z-index: 1;
+}
+
+.levelRow.bid .levelPrice {
+  color: #00e676;
+}
+
+.levelRow.ask .levelPrice {
+  color: #ff3d57;
+}
+
+/* Spread */
+.spreadRow {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  border-top: 1px solid rgba(0, 212, 255, 0.06);
+  border-bottom: 1px solid rgba(0, 212, 255, 0.06);
+  background: #0a0e17;
+  flex-shrink: 0;
+}
+
+.spreadLabel {
+  color: #374151;
+}
+
+.spreadValue {
+  color: #00d4ff;
+  font-weight: 600;
+}
+
+/* Empty state */
+.emptyState {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: #374151;
+}
+
+/* Skeleton */
+.skeleton {
+  padding: 4px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.skeletonLine {
+  height: 20px;
+  background: #141c2b;
+  border-radius: 3px;
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.7; }
+}

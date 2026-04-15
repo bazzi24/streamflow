@@ -1,0 +1,124 @@
+/* WatchlistPanel styles */
+.watchlistPanel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.watchlistSearch {
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(0, 212, 255, 0.08);
+  flex-shrink: 0;
+}
+
+.watchlistSearchInput {
+  width: 100%;
+  background: #141c2b;
+  border: 1px solid rgba(0, 212, 255, 0.08);
+  border-radius: 4px;
+  color: #e2e8f0;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  padding: 4px 8px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.watchlistSearchInput:focus {
+  border-color: rgba(0, 212, 255, 0.35);
+  box-shadow: 0 0 6px rgba(0, 212, 255, 0.25);
+}
+
+.watchlistSection {
+  flex-shrink: 0;
+}
+
+.watchlistSectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 10px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 9px;
+  font-weight: 600;
+  color: #374151;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid rgba(0, 212, 255, 0.08);
+  background: #0a0e17;
+}
+
+.watchlistSectionHeader:hover {
+  color: #64748b;
+}
+
+.watchlistItems {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 212, 255, 0.18) transparent;
+  max-height: calc(100vh - 48px - 40px); /* will be clamped by parent */
+}
+
+.watchlistRow {
+  display: flex;
+  align-items: center;
+  padding: 5px 10px;
+  gap: 6px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  transition: all 0.12s;
+  position: relative;
+}
+
+.watchlistRow:hover {
+  background: #141c2b;
+  border-left-color: rgba(0, 212, 255, 0.18);
+}
+
+.watchlistRow.selected {
+  background: #141c2b;
+  border-left-color: #00d4ff;
+  box-shadow: inset 0 0 20px rgba(0, 212, 255, 0.05);
+}
+
+.watchlistSymbol {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: #e2e8f0;
+  min-width: 40px;
+}
+
+.watchlistPrice {
+  font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: #e2e8f0;
+  flex: 1;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.watchlistChange {
+  font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
+  font-size: 10px;
+  min-width: 46px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  min-width: 52px;
+}
+
+.watchlistChange.up {
+  color: #00e676;
+}
+
+.watchlistChange.down {
+  color: #ff3d57;
+}
+
+.watchlistChange.neutral {
+  color: #374151;
+}

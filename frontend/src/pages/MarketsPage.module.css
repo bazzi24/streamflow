@@ -1,0 +1,112 @@
+.page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--text-1);
+}
+
+/* ── Header ── */
+.header {
+  display: flex;
+  align-items: center;
+  height: 56px;
+  padding: 0 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(12px);
+}
+.headerLeft { display: flex; align-items: center; gap: 20px; }
+.logoWrap { display: flex; align-items: center; gap: 8px; text-decoration: none; }
+.logo {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+  color: white; display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 900; box-shadow: 0 2px 8px rgba(0,180,216,0.3);
+}
+.logoText { font-size: 16px; font-weight: 800; color: var(--text-1); letter-spacing: -0.3px; }
+.nav { display: flex; gap: 4px; }
+.navLink {
+  padding: 6px 12px; border-radius: 8px; font-size: 13px; font-weight: 500;
+  color: var(--text-2); text-decoration: none; transition: background 0.15s, color 0.15s;
+}
+.navLink:hover { background: var(--surface-2); color: var(--text-1); }
+.headerRight { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.iconBtn {
+  width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--surface); cursor: pointer; display: flex; align-items: center;
+  justify-content: center; font-size: 15px; transition: background 0.15s;
+}
+.iconBtn:hover { background: var(--surface-2); }
+.watchlistBtn {
+  padding: 6px 14px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text-1); font-size: 12px; font-weight: 600;
+  cursor: pointer; font-family: inherit; transition: background 0.15s;
+}
+.watchlistBtn:hover { background: var(--surface-2); }
+.userChip {
+  display: flex; align-items: center; gap: 6px; padding: 4px 10px 4px 4px;
+  border-radius: 999px; background: var(--surface-2); font-size: 12px;
+  font-weight: 600; color: var(--text-1);
+}
+.userAvatar {
+  width: 24px; height: 24px; border-radius: 50%; background: var(--accent);
+  color: white; display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700;
+}
+.logoutBtn {
+  background: none; border: none; font-size: 11px; color: var(--down);
+  cursor: pointer; padding: 2px 6px; border-radius: 4px; font-family: inherit;
+}
+.logoutBtn:hover { background: var(--down-soft); }
+.loginBtn {
+  padding: 7px 18px; border-radius: 8px; border: none; background: var(--accent);
+  color: white; font-size: 12px; font-weight: 700; cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,180,216,0.3); font-family: inherit;
+}
+.loginBtn:hover { background: var(--accent-hover); box-shadow: 0 4px 12px rgba(0,180,216,0.4); }
+
+/* ── Body ── */
+.body { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+/* ── Title bar ── */
+.titleBar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 20px; border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.title { font-size: 16px; font-weight: 800; color: var(--text-1); margin: 0; }
+.loading { font-size: 11px; color: var(--accent); font-weight: 500; }
+.count { font-size: 12px; color: var(--text-3); margin-left: auto; }
+.searchInput {
+  padding: 6px 14px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg); color: var(--text-1); font-size: 12px; font-family: inherit;
+  outline: none; transition: border-color 0.15s, box-shadow 0.15s; width: 180px;
+}
+.searchInput:focus {
+  border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.searchInput::placeholder { color: var(--text-3); }
+
+/* ── Segment tabs ── */
+.tabBar {
+  display: flex; gap: 4px; padding: 8px 20px;
+  border-bottom: 1px solid var(--border); background: var(--surface);
+}
+.tab {
+  padding: 5px 14px; border-radius: 8px; font-size: 12px; font-weight: 600;
+  color: var(--text-2); background: transparent; border: none; cursor: pointer;
+  transition: all 0.15s; font-family: inherit;
+}
+.tab:hover { background: var(--surface-2); color: var(--text-1); }
+.tab.active {
+  background: var(--accent); color: white;
+  box-shadow: 0 2px 8px rgba(0,180,216,0.3);
+}
+
+/* ── Grid wrapper ── */
+.gridWrap { flex: 1; overflow: hidden; }
