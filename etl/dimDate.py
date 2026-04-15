@@ -29,9 +29,14 @@ def dim_date():
         "driver": os.getenv("DB_DRIVER"),
     }
 
-    raw_df = spark.read.jdbc(url=raw_db_url,
-                             table="data.data_trade",
-                             properties=raw_db_properties)
+    # Only load recent trading dates (past 60 days) to avoid full-table scan
+    # as data_trade grows — old dates never change so re-reading them wastes I/O.
+    from_day = "DATE_SUB(CURRENT_DATE, INTERVAL 60 DAY)"
+    raw_df = spark.read.jdbc(
+        url=raw_db_url,
+        table=f"(SELECT * FROM data.data_trade WHERE trading_date >= {from_day}) AS recent",
+        properties=raw_db_properties,
+    )
 
     df = raw_df.withColumnRenamed("trading_date", "tradingdate")
 

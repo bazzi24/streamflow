@@ -29,9 +29,13 @@ def dim_index():
         "driver": os.getenv("DB_DRIVER"),
     }
 
-    raw_df = spark.read.jdbc(url=raw_db_url,
-                             table="data.index_data",
-                             properties=raw_db_properties)
+    # Only load recent index data (past 60 days) to avoid full-table scan
+    from_day = "DATE_SUB(CURRENT_DATE, INTERVAL 60 DAY)"
+    raw_df = spark.read.jdbc(
+        url=raw_db_url,
+        table=f"(SELECT * FROM data.index_data WHERE trading_date >= {from_day}) AS recent",
+        properties=raw_db_properties,
+    )
 
     dim_index_df = raw_df.select("index_name").distinct()
 
