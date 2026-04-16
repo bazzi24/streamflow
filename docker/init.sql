@@ -320,21 +320,43 @@ CREATE TABLE IF NOT EXISTS `data`.`securities_status` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 
+CREATE TABLE IF NOT EXISTS `data`.`trade_match_archive` (
+    -- One row per matched trade (buy-aggressor tick from market_data_trade)
+    -- Aggregated per symbol per trading date.
+    id           BIGINT       NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    trading_date DATE         NOT NULL,
+    `time`       VARCHAR(20)  NOT NULL,
+    symbol       VARCHAR(20)  NOT NULL,
+    price        DECIMAL(20,4) NOT NULL,
+    volume       BIGINT       NOT NULL DEFAULT 0,
+    -- 'buy'  = buy-initiated (Side='BU'), matched against a seller
+    -- 'sell' = sell-initiated (Side='SD'), matched against a buyer
+    side         VARCHAR(10)   NOT NULL,      -- 'buy' | 'sell'
+    price_change DECIMAL(20,4) DEFAULT NULL,   -- change from previous match (can be negative)
+    created_at   DATETIME      DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_symbol_date (symbol, trading_date),
+    INDEX idx_time (trading_date, `time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
 -- ============================================================
 --  SCHEMA: data.candlestick  — Pre-computed OHLC candles
 --  Written by CandlestickConsumer (Kafka consumer, no Flink).
 --  1m = source of truth; larger timeframes derived at query time.
 -- ============================================================
 CREATE TABLE IF NOT EXISTS `data`.`candlestick_1m` (
-    symbol      VARCHAR(20)  NOT NULL,
-    time_start  DATETIME     NOT NULL,
-    open        DECIMAL(20,4),
-    high        DECIMAL(20,4),
-    low         DECIMAL(20,4),
-    close       DECIMAL(20,4),
-    volume      BIGINT,
+    symbol        VARCHAR(20)  NOT NULL,
+    time_start    DATETIME     NOT NULL,
+    trading_date  DATE         NOT NULL DEFAULT '2000-01-01',
+    `time`        VARCHAR(20)  NOT NULL DEFAULT '00:00:00',
+    open          DECIMAL(20,4),
+    high          DECIMAL(20,4),
+    low           DECIMAL(20,4),
+    close         DECIMAL(20,4),
+    volume        BIGINT,
     PRIMARY KEY (symbol, time_start),
-    INDEX idx_symbol_time (symbol, time_start DESC)
+    INDEX idx_symbol_time (symbol, time_start DESC),
+    INDEX idx_trading_date (trading_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `data`.`candlestick_1d` (
