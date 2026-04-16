@@ -110,6 +110,10 @@
   "chart.tab.capitalDividend": "Capital & Dividend",
   "chart.tab.news": "News",
   "chart.tab.stats": "Statistics",
+  "chart.archiveBadge": "Archived",
+  "chart.archivedSubtitle": "Previous session — displayed after market close",
+  "chart.sessionClosed": "Session closed",
+  "chart.sessionClosedDesc": "Live tape resumes at 9:15 AM next trading day",
 
   "header.switchToEnglish": "Switch to English",
   "header.switchToVietnamese": "Switch to Vietnamese",
