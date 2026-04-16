@@ -149,3 +149,15 @@ class MarketOverviewResponse(BaseModel):
     top_gainers: list[StockSummary]
     top_losers: list[StockSummary]
 
+
+# ── Trade Match Archive ──────────────────────────────────────────────────
+
+class TradeMatch(BaseModel):
+    trading_date: str       # YYYY-MM-DD
+    time: str               # HH:MM:SS
+    symbol: str
+    price: float
+    volume: int
+    side: str               # 'buy' | 'sell'
+    price_change: float | None = None
+
