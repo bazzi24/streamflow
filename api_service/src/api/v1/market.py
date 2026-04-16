@@ -12,6 +12,6 @@ def get_stock_service(db: Session = Depends(get_streaming_db)) -> StockService:
 
 
 @router.get("/overview", response_model=MarketOverviewResponse)
-def get_market_overview(svc: StockService = Depends(get_stock_service)):
+async def get_market_overview(svc: StockService = Depends(get_stock_service)):
     """Index values + top gainers + top losers."""
-    return svc.get_market_overview()
+    return await svc.get_market_overview()

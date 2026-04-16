@@ -12,6 +12,7 @@ from ..schemas.stock import (
 )
 from datetime import timezone, timedelta
 import logging
+from functools import lru_cache
 
 logger = logging.getLogger(__name__)
 
@@ -256,29 +257,34 @@ class StockService:
         )
         ranked_trade = aliased(StreamingDataTrade, ranked)
 
+        # ── Scalar subqueries: latest id per symbol ─────────────────────────────
+        # Defined as standalone expressions so SQLAlchemy can resolve the
+        # join direction unambiguously (avoids "multiple FROMs" ambiguity).
+        from sqlalchemy.orm import aliased as _aliased
+
+        latest_quote_id = (
+            self.db.query(func.max(StreamingDataQuote.id))
+            .filter(StreamingDataQuote.symbol_id == ranked_trade.symbol)
+            .correlate(ranked)
+            .scalar_subquery()
+        )
+        latest_fr_id = (
+            self.db.query(func.max(StreamingForeignRoom.id))
+            .filter(StreamingForeignRoom.symbol == ranked_trade.symbol)
+            .correlate(ranked)
+            .scalar_subquery()
+        )
+
+        # ── Build the three-way join ────────────────────────────────────────────
+        QuoteAlias = _aliased(StreamingDataQuote)
+        FRAlias    = _aliased(StreamingForeignRoom)
+
         base = (
-            self.db.query(
-                ranked_trade,
-                StreamingDataQuote,
-                StreamingForeignRoom,
-            )
+            self.db.query(ranked_trade, QuoteAlias, FRAlias)
+            .select_from(ranked_trade)
             .filter(ranked.c.rn == 1)
-            .outerjoin(
-                StreamingDataQuote,
-                StreamingDataQuote.id
-                == self.db.query(func.max(StreamingDataQuote.id))
-                .filter(StreamingDataQuote.symbol_id == ranked_trade.symbol)
-                .correlate(ranked_trade)
-                .scalar_subquery(),
-            )
-            .outerjoin(
-                StreamingForeignRoom,
-                StreamingForeignRoom.id
-                == self.db.query(func.max(StreamingForeignRoom.id))
-                .filter(StreamingForeignRoom.symbol == ranked_trade.symbol)
-                .correlate(ranked_trade)
-                .scalar_subquery(),
-            )
+            .outerjoin(QuoteAlias, QuoteAlias.id == latest_quote_id)
+            .outerjoin(FRAlias,    FRAlias.id    == latest_fr_id)
         )
 
         if exchange and exchange not in ("VN30", "HNX30"):
@@ -602,8 +608,14 @@ class StockService:
 
     # ── Market Overview ────────────────────────────────────────────────
 
-    def get_market_overview(self) -> MarketOverviewResponse:
-        # Get distinct latest index rows from streaming
+    def _fetch_all_summaries(self) -> list[StockSummary]:
+        """Fetch all stocks (used for top gainers/losers in market overview)."""
+        return self.list_latest_quotes()
+
+    async def get_market_overview(self) -> MarketOverviewResponse:
+        from ..services.stock_cache import stock_cache
+
+        # Get indices from latest index_data rows
         idx_rows = (
             self.db.query(
                 StreamingIndexData.index_id,
@@ -642,10 +654,14 @@ class StockService:
                 )
             )
 
-        summaries = self.list_latest_quotes()
-        summaries.sort(key=lambda x: x.ratio_change, reverse=True)
-        top_gainers = summaries[:5]
-        top_losers = summaries[-5:] if len(summaries) >= 5 else summaries
+        # Cache the full quotes list (slow query ~5s; cached for 5s)
+        summaries = await stock_cache.get_or_set(
+            "overview:summaries",
+            self._fetch_all_summaries,
+        )
+        sorted_summaries = sorted(summaries, key=lambda x: x.ratio_change, reverse=True)
+        top_gainers = sorted_summaries[:5]
+        top_losers = sorted_summaries[-5:] if len(sorted_summaries) >= 5 else sorted_summaries
 
         return MarketOverviewResponse(
             indices=indices,

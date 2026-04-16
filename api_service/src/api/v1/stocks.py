@@ -26,7 +26,7 @@ def _cache_key(exchange: str | None, segment: str | None) -> str:
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @router.get("", response_model=list[StockSummary])
-def list_stocks(
+async def list_stocks(
     exchange: Annotated[str | None, Query(
         description="Filter by exchange: HOSE, HNX, UPCOM, VN30, HNX30"
     )] = None,
@@ -42,7 +42,7 @@ def list_stocks(
     on every frontend poll. Cache is invalidated on every Kafka price tick.
     """
     key = _cache_key(exchange, segment)
-    return stock_cache.get_or_set(
+    return await stock_cache.get_or_set(
         key,
         svc.list_latest_quotes,
         exchange=exchange,
