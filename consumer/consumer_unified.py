@@ -4,6 +4,7 @@ consumer_unified.py
 Runs all 6 Kafka consumers in parallel threads inside a single container:
   5 topic consumers (market_data_trade/quote, index_data, foreign_room_data,
   securities_status) + CandlestickConsumer (1m/1d OHLCV pre-computation).
+  + TradeMatchArchiveThread (daily trade match archive writer).
 Each thread writes to the streaming MySQL DB.
 """
 
@@ -14,12 +15,38 @@ import time
 import signal
 import logging
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta, time as dtime
 from logging.handlers import RotatingFileHandler
 from kafka import KafkaConsumer
 import pymysql
 
 from candlestick import CandlestickConsumer
+
+# ── Vietnam market hours (UTC+7) ───────────────────────────────────────────────
+MARKET_OPEN  = dtime(9, 15)   # 9:15 AM UTC+7 — archive display starts
+MARKET_CLOSE = dtime(15, 30)  # 3:30 PM UTC+7 — archive switches on
+RESET_HOUR   = 9              # 9:00 AM UTC+7 — next-day archive clear
+
+def _now() -> datetime:
+    """Return current Vietnam-time datetime."""
+    return datetime.utcnow() + timedelta(hours=7)
+
+def _vn_time_to_str(dt: datetime) -> str:
+    """Format a Vietnam-time datetime as HH:MM:SS string."""
+    vn = _now()  # local, offset-aware enough
+    return dt.strftime("%H:%M:%S")
+
+def _date_offset(dt: datetime, days: int) -> datetime:
+    return dt + timedelta(days=days)
+
+def _is_trading_hours(now_vn: datetime) -> bool:
+    t = now_vn.time()
+    return MARKET_OPEN <= t <= MARKET_CLOSE
+
+def _is_reset_time(now_vn: datetime) -> bool:
+    """True when current time is exactly 9:00 AM — triggers daily reset."""
+    return now_vn.hour == RESET_HOUR and now_vn.minute == 0 and now_vn.second < 30
+
 
 # ── Topics → INSERT SQL ───────────────────────────────────────────────────────
 
@@ -73,6 +100,15 @@ INSERT_STATUS = """
         rtype, market_id, trading_date, time, symbol_id,
         trading_session, trading_status, exchange, trading_ol_session
     ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+"""
+
+INSERT_TRADE_MATCH = """
+    INSERT INTO data.trade_match_archive
+        (trading_date, `time`, symbol, price, volume, side, price_change)
+    VALUES (%s, %s, %s, %s, %s, %s, %s)
+    ON DUPLICATE KEY UPDATE
+        price = VALUES(price),
+        volume = VALUES(volume)
 """
 
 TOPIC_CONFIG = {
@@ -356,6 +392,220 @@ class ConsumerThread(threading.Thread):
         self._stop_event.set()
 
 
+# ── Trade Match Archive Thread ───────────────────────────────────────────────
+# Listens on market_data_trade, strips raw messages to symbol/price/volume/side
+# and writes one row per matched trade to data.trade_match_archive.
+#
+# Automatic lifecycle:
+#   • Active (9:15 AM – 3:30 PM UTC+7): batches and writes every tick.
+#   • 3:30 PM trigger: flushes remaining batch, archive becomes queryable.
+#   • 9:00 AM next day: DELETE today's rows before new session begins.
+#   • Outside market hours: idles (skips messages, flushes only on shutdown).
+
+class TradeMatchArchiveThread(threading.Thread):
+    """
+    Dedicated thread that writes every matched-trade tick to data.trade_match_archive.
+
+    Deduplication: INSERT ... ON DUPLICATE KEY UPDATE on (trading_date, `time`, symbol)
+    ensures that in case of consumer restart / re-processing, each tick appears exactly once.
+
+    Reset: DELETE WHERE trading_date = today at 9:00 AM so the archive is always
+    a single clean session (9:15 AM – 3:30 PM).
+    """
+
+    BATCH_SIZE       = 200          # rows before a forced flush
+    FLUSH_INTERVAL_S = 5            # seconds between periodic flushes
+    BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+
+    def __init__(self):
+        super().__init__(daemon=True, name="TradeMatchArchive")
+        self._stop       = threading.Event()
+        self._conn       = None
+        self._cursor     = None
+        self._consumer   = None
+        self._batch: list = []
+        self._last_flush = time.time()
+        self._today_date = ""       # today's archive trading date (YYYY-MM-DD)
+        self._closing    = False    # True once 3:30 PM flush has been done today
+
+    def _connect_db(self):
+        self._conn   = connect_db()
+        self._cursor = self._conn.cursor()
+
+    def _connect_kafka(self):
+        self._consumer = KafkaConsumer(
+            "market_data_trade",
+            bootstrap_servers=self.BOOTSTRAP_SERVERS,
+            group_id="consumer-trade-match-archive",
+            value_deserializer=lambda x: json.loads(x.decode("utf-8")),
+            enable_auto_commit=False,
+            auto_offset_reset="earliest",
+        )
+
+    def _reconnect_db(self):
+        try:
+            self._cursor.close()
+            self._conn.close()
+        except Exception:
+            pass
+        self._connect_db()
+
+    # ── Helpers ──────────────────────────────────────────────────────────────
+
+    def _refresh_today(self, now_vn: datetime) -> None:
+        """Update _today_date; trigger daily reset if it's 9:00 AM."""
+        new_date = now_vn.strftime("%Y-%m-%d")
+
+        if new_date != self._today_date:
+            if self._today_date:
+                # We crossed midnight — clear stale closing flag
+                self._closing = False
+                self.logger.info(
+                    "Date changed from %s to %s — closing flag reset.",
+                    self._today_date, new_date,
+                )
+            self._today_date = new_date
+
+        # Daily reset: 9:00 AM — delete today's rows so the new session is clean
+        if _is_reset_time(now_vn) and not getattr(self, "_reset_done", False):
+            self._do_daily_reset()
+            self._reset_done = True
+
+        # If we stepped past 9:00 AM and somehow missed unsetting the flag
+        if now_vn.hour > RESET_HOUR:
+            self._reset_done = False
+
+    def _do_daily_reset(self) -> None:
+        """DELETE all rows for today's date (from the *previous* session)."""
+        try:
+            yesterday = (datetime.utcnow() + timedelta(hours=7) - timedelta(days=1)).strftime("%Y-%m-%d")
+            self._cursor.execute(
+                "DELETE FROM data.trade_match_archive WHERE trading_date = %s",
+                (yesterday,),
+            )
+            self._conn.commit()
+            self.logger.info("Daily reset: deleted trade_match_archive rows for %s", yesterday)
+        except Exception as e:
+            self.logger.error("Daily reset DELETE failed: %s", e)
+            self._conn.rollback()
+
+    def _process_msg(self, msg) -> None:
+        """Extract symbol/price/vol/side from a trade message and enqueue it."""
+        try:
+            content_str = msg.value.get("Content", "")
+            if not content_str:
+                return
+            data = json.loads(content_str)
+        except Exception:
+            return
+
+        trading_date = _parse_date(data.get("TradingDate"))
+        if not trading_date:
+            return
+
+        side_raw = str(data.get("Side") or "").strip().upper()
+        if side_raw not in ("BU", "SD"):
+            return
+
+        try:
+            price = float(data.get("LastPrice") or 0)
+            vol   = int(data.get("LastVol") or 0)
+        except (TypeError, ValueError):
+            return
+
+        if price <= 0 or vol <= 0:
+            return
+
+        self._batch.append((
+            trading_date,                    # trading_date
+            data.get("Time") or "00:00:00", # time
+            data.get("Symbol") or "",        # symbol
+            price,                           # price
+            vol,                             # volume
+            "buy" if side_raw == "BU" else "sell",  # side
+            float(data.get("Change") or 0) or None,  # price_change
+        ))
+
+    def _flush(self) -> None:
+        if not self._batch:
+            return
+        try:
+            self._cursor.executemany(INSERT_TRADE_MATCH, self._batch)
+            self._conn.commit()
+            self._consumer.commit()
+            self.logger.info(
+                "Archived %d trade matches to trade_match_archive (date=%s)",
+                len(self._batch), self._today_date,
+            )
+        except Exception as e:
+            self.logger.error("Archive flush error: %s", e)
+            self._conn.rollback()
+        finally:
+            self._batch.clear()
+            self._last_flush = time.time()
+
+    # ── Main loop ────────────────────────────────────────────────────────────
+
+    def run(self) -> None:
+        self.logger = setup_logger("trade-match-archive")
+        self.logger.info("TradeMatchArchive thread starting...")
+
+        self._connect_db()
+        self._connect_kafka()
+
+        while not self._stop.is_set():
+            try:
+                now_vn = _now()
+                self._refresh_today(now_vn)
+
+                # ── Idle outside market hours ────────────────────────────────
+                if not _is_trading_hours(now_vn):
+                    # Still flush periodically to avoid holding a large batch
+                    if self._batch and (time.time() - self._last_flush) >= self.FLUSH_INTERVAL_S:
+                        self._flush()
+                    time.sleep(5)
+                    continue
+
+                # ── At 3:30 PM: trigger closing flush ───────────────────────
+                t = now_vn.time()
+                if (t.hour == 15 and t.minute == 30 and not self._closing):
+                    self.logger.info("Market close (3:30 PM) — final flush of trade_match_archive.")
+                    self._flush()
+                    self._closing = True
+
+                # ── Poll Kafka ───────────────────────────────────────────────
+                raw_msgs = self._consumer.poll(timeout_ms=2000, max_records=self.BATCH_SIZE)
+                for tp, messages in raw_msgs.items():
+                    for msg in messages:
+                        self._process_msg(msg)
+
+                # ── Flush on batch size ────────────────────────────────────
+                if len(self._batch) >= self.BATCH_SIZE:
+                    self._flush()
+                # ── Flush on timer ─────────────────────────────────────────
+                elif self._batch and (time.time() - self._last_flush) >= self.FLUSH_INTERVAL_S:
+                    self._flush()
+
+            except Exception as e:
+                self.logger.error("Archive loop error: %s", e)
+                time.sleep(5)
+                try:
+                    self._reconnect_db()
+                except Exception:
+                    pass
+
+        # ── Shutdown: final flush ──────────────────────────────────────────
+        self.logger.info("TradeMatchArchive shutting down — final flush.")
+        self._flush()
+        self._consumer.close()
+        self._cursor.close()
+        self._conn.close()
+        self.logger.info("TradeMatchArchive stopped.")
+
+    def stop(self) -> None:
+        self._stop.set()
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
@@ -366,14 +616,12 @@ def main():
         for t in threads:
             if hasattr(t, "stop"):
                 t.stop()
-            elif hasattr(t, "_stop"):
-                t._stop.set()
         for t in threads:
             t.join(timeout=10)
         print("All consumer threads stopped.")
         sys.exit(0)
 
-    signal.signal(signal.SIGINT, shutdown)
+    signal.signal(signal.SIGINT,  shutdown)
     signal.signal(signal.SIGTERM, shutdown)
 
     # ── CandlestickConsumer ────────────────────────────────────────────────
@@ -382,7 +630,13 @@ def main():
     threads.append(candlestick)
     time.sleep(0.5)
 
-    # ── 5 topic consumers ─────────────────────────────────────────────────
+    # ── Trade Match Archive ───────────────────────────────────────────────
+    archive = TradeMatchArchiveThread()
+    archive.start()
+    threads.append(archive)
+    time.sleep(0.5)
+
+    # ── 5 topic consumers ────────────────────────────────────────────────
     for topic, cfg in TOPIC_CONFIG.items():
         t = ConsumerThread(topic, cfg["insert_sql"], cfg["batch_size"])
         t.start()
@@ -391,7 +645,7 @@ def main():
 
     total = len(threads)
     print(f"All {total} consumer threads started successfully!")
-    print(f"Topics: {', '.join(TOPIC_CONFIG.keys())} + candlestick")
+    print(f"Topics: {', '.join(TOPIC_CONFIG.keys())} + candlestick + trade-match-archive")
     print("Press Ctrl+C to stop all consumers.\n")
 
     try:
