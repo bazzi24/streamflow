@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { stockApi, marketApi } from "../../api/stockApi";
-import { formatPrice, formatVolume, comparePrice, priceColorByCompare } from "../../lib/utils";
+import { formatPrice, formatVolume, comparePrice, priceColorByCompare, formatIndexValue } from "../../lib/utils";
 import { useStockWebSocket } from "../../hooks/useStockWebSocket";
 import { useAppStore } from "../../stores/appStore";
 import type { StockSummary, IndexOverview } from "../../api/stockApi";
@@ -296,14 +296,14 @@ function TickerCard({ index: idx }: { index: IndexOverview }) {
   const up = idx.ratio_change >= 0;
   const qtty = idx.total_qtty ?? 0;
   const qttyFormatted = qtty > 0
-    ? (qtty / 1000).toLocaleString("vi-VN", { maximumFractionDigits: 0 })
+    ? (qtty).toLocaleString("vi-VN", { maximumFractionDigits: 0 })
     : "—";
   return (
     <div className={`${styles.tickerCard} ${up ? styles.up : styles.down}`}>
       {/* Top: name + value + sparkline */}
       <div className={styles.tickerCardTop}>
         <span className={styles.tickerBadge}>{idx.index_name}</span>
-        <span className={styles.tickerValue}>{formatPrice(idx.index_value)}</span>
+        <span className={styles.tickerValue}>{formatIndexValue(idx.index_value)}</span>
       </div>
       {/* Sparkline fills middle space */}
       <div className={styles.tickerSparkline}>
@@ -312,13 +312,13 @@ function TickerCard({ index: idx }: { index: IndexOverview }) {
       {/* Bottom: % change + volume + breadth */}
       <div className={styles.tickerStats}>
         <span className={`${styles.tickerPct} ${up ? styles.up : styles.down}`}>
-          {up ? "▲" : "▼"} {up ? "+" : ""}{idx.ratio_change.toFixed(2)}%
+          {up ? "↑" : "↓"} {up ? "+" : ""}{idx.ratio_change.toFixed(2)}%
         </span>
         <span className={styles.tickerVol}>{qttyFormatted} CP</span>
         <div className={styles.tickerBreadth}>
-          <span className={styles.tickerAdv}>▲ {idx.advances}</span>
+          <span className={styles.tickerAdv}>↑ {idx.advances}</span>
           <span className={styles.tickerSep}>/</span>
-          <span className={styles.tickerDec}>▼ {idx.declines}</span>
+          <span className={styles.tickerDec}>↓ {idx.declines}</span>
         </div>
       </div>
     </div>
