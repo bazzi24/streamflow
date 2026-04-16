@@ -83,7 +83,7 @@
   border: none;
   background: transparent;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
   color: #5a6a80;
   cursor: pointer;
   transition: all 0.12s;
@@ -128,7 +128,7 @@
   color: #00e676;
   border-radius: 3px;
   cursor: pointer;
-  font-size: 11px; font-weight: 700;
+  font-size: 11px; font-weight: 500;
   font-family: inherit;
   transition: all 0.12s;
 }
@@ -140,7 +140,7 @@
   border: none; background: transparent;
   color: #3a4a5a; border-radius: 3px;
   cursor: pointer; transition: all 0.12s;
-  font-size: 14px; font-weight: 700; font-family: inherit;
+  font-size: 14px; font-weight: 500; font-family: inherit;
 }
 .close-btn:hover { background: rgba(255,61,87,0.12); color: #ff3d57; }
 
@@ -180,13 +180,13 @@
 
 .stock-symbol-text {
   font-size: 17px;
-  font-weight: 800;
+  font-weight: 500;
   color: #e8eef4;
   letter-spacing: -0.3px;
   line-height: 1;
 }
 .stock-exchange-badge {
-  font-size: 9px; font-weight: 700;
+  font-size: 9px; font-weight: 500;
   color: #00d4ff;
   background: rgba(0,212,255,0.08);
   padding: 2px 6px;
@@ -202,12 +202,12 @@
 
 .stock-price-block { display: flex; align-items: baseline; gap: 7px; flex-shrink: 0; }
 .stock-price {
-  font-size: 22px; font-weight: 800;
+  font-size: 22px; font-weight: 500;
   letter-spacing: -0.5px; line-height: 1;
   color: #e8eef4;
 }
 .stock-change-badge {
-  font-size: 11px; font-weight: 700;
+  font-size: 11px; font-weight: 500;
   padding: 2px 7px; border-radius: 2px;
 }
 .stock-change-badge.up { color: #00e676; background: rgba(0,230,118,0.1); }
@@ -221,8 +221,8 @@
 
 .stock-stats { display: flex; align-items: center; gap: 10px; flex-shrink: 0; overflow: hidden; }
 .stock-stat { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
-.stock-stat-label { font-size: 10px; font-weight: 600; color: #3a4a5a; }
-.stock-stat-value { font-size: 11px; font-weight: 700; color: #8899aa; }
+.stock-stat-label { font-size: 10px; font-weight: 500; color: #3a4a5a; }
+.stock-stat-value { font-size: 11px; font-weight: 500; color: #8899aa; }
 .stock-stat-value.up { color: #00e676; }
 .stock-stat-value.down { color: #ff3d57; }
 .stock-stat-value.ceiling { color: #c084fc; }
@@ -253,7 +253,7 @@
   flex-shrink: 0;
 }
 .live-label {
-  font-size: 9px; font-weight: 700;
+  font-size: 9px; font-weight: 500;
   color: #00e676; letter-spacing: 0.5px; text-transform: uppercase;
 }
 
@@ -295,7 +295,7 @@
   font-size: 11px; color: #4a5a6a;
   flex-shrink: 0;
 }
-.chart-breadcrumb-sym { font-size: 12px; font-weight: 700; color: #8899aa; }
+.chart-breadcrumb-sym { font-size: 12px; font-weight: 500; color: #8899aa; }
 .chart-breadcrumb-sep { color: #2a3a4a; }
 
 .chart-controls { display: flex; align-items: center; gap: 2px; flex-wrap: nowrap; }
@@ -309,7 +309,7 @@
   border-radius: 3px;
   cursor: pointer; font-size: 11px;
   transition: all 0.12s;
-  font-family: inherit; font-weight: 600;
+  font-family: inherit; font-weight: 500;
 }
 .chart-control-btn:hover { background: rgba(255,255,255,0.05); color: #8899aa; }
 .chart-control-btn.active {
@@ -334,8 +334,8 @@
   overflow: hidden;
 }
 .legend-item { display: flex; gap: 3px; align-items: center; flex-shrink: 0; }
-.legend-label { color: #3a4a5a; font-size: 10px; font-weight: 600; }
-.legend-value { font-weight: 700; color: #8899aa; font-size: 11px; }
+.legend-label { color: #3a4a5a; font-size: 10px; font-weight: 500; }
+.legend-value { font-weight: 500; color: #8899aa; font-size: 11px; }
 .legend-value.up { color: #00e676; }
 .legend-value.down { color: #ff3d57; }
 .legend-sep { color: rgba(255,255,255,0.08); flex-shrink: 0; }
@@ -378,7 +378,7 @@
 .range-tab {
   padding: 2px 8px;
   border: none; background: transparent; border-radius: 2px;
-  font-size: 10px; font-weight: 700; color: #4a5a6a;
+  font-size: 10px; font-weight: 500; color: #4a5a6a;
   cursor: pointer; transition: all 0.12s; font-family: inherit;
 }
 .range-tab:hover { background: rgba(255,255,255,0.05); color: #8899aa; }
@@ -388,7 +388,7 @@
 .scale-btn {
   padding: 1px 6px;
   border: 1px solid rgba(255,255,255,0.06); background: transparent;
-  border-radius: 2px; font-size: 10px; font-weight: 600; color: #4a5a6a;
+  border-radius: 2px; font-size: 10px; font-weight: 500; color: #4a5a6a;
   cursor: pointer; transition: all 0.12s; font-family: inherit;
 }
 .scale-btn:hover { background: rgba(255,255,255,0.05); }
@@ -414,7 +414,7 @@
   border-bottom: 1px solid rgba(255,255,255,0.05); flex-shrink: 0;
 }
 .section-title {
-  font-size: 10px; font-weight: 700;
+  font-size: 10px; font-weight: 500;
   color: #8899aa;
   text-transform: uppercase; letter-spacing: 0.06em;
 }
@@ -440,8 +440,8 @@
 }
 .depth-sum-col:last-child { border-right: none; }
 .depth-sum-label { font-size: 9px; color: #3a4a5a; margin-bottom: 2px; }
-.depth-sum-bid { color: #00e676; font-weight: 800; font-size: 12px; }
-.depth-sum-ask { color: #ff3d57; font-weight: 800; font-size: 12px; }
+.depth-sum-bid { color: #00e676; font-weight: 500; font-size: 12px; }
+.depth-sum-ask { color: #ff3d57; font-weight: 500; font-size: 12px; }
 
 .depth-bar-container {
   height: 3px; background: rgba(255,61,87,0.1); border-radius: 2px;
@@ -451,7 +451,7 @@
 
 .depth-table { width: 100%; border-collapse: collapse; font-size: 11px; table-layout: fixed; }
 .depth-table th {
-  padding: 3px 4px; font-size: 9px; font-weight: 700;
+  padding: 3px 4px; font-size: 9px; font-weight: 500;
   color: #3a4a5a; text-transform: uppercase; font-family: "IBM Plex Mono", monospace;
   border-bottom: 1px solid rgba(255,255,255,0.04); background: #0b0e17;
 }
@@ -461,7 +461,7 @@
 .depth-table th:nth-child(3) { width: 22%; text-align: center; }
 .depth-table th:last-child   { width: 28%; text-align: left; padding-left: 8px; }
 .depth-table td {
-  padding: 2px 4px; font-weight: 600;
+  padding: 2px 4px; font-weight: 500;
   border-bottom: 1px solid rgba(255,255,255,0.03);
   font-family: "IBM Plex Mono", monospace;
   height: 22px; line-height: 22px;
@@ -470,7 +470,7 @@
 .depth-table td:nth-child(2) { text-align: center; }
 .depth-table td:nth-child(3) { text-align: center; }
 .depth-table td:last-child  { text-align: left; padding-left: 8px; }
-.depth-price { font-size: 11px; font-weight: 700; }
+.depth-price { font-size: 11px; font-weight: 500; }
 .depth-vol { font-size: 10px; color: #3a4a5a; }
 .depth-row:hover { background: rgba(255,255,255,0.025); }
 
@@ -509,7 +509,7 @@
 
 .trade-table { width: 100%; border-collapse: collapse; font-size: 10px; }
 .trade-table th {
-  padding: 3px 6px; text-align: center; font-size: 9px; font-weight: 700;
+  padding: 3px 6px; text-align: center; font-size: 9px; font-weight: 500;
   color: #3a4a5a; text-transform: uppercase;
   border-bottom: 1px solid rgba(255,255,255,0.04); background: #0b0e17;
   position: sticky; top: 0;
@@ -528,7 +528,7 @@
   text-align: left; font-family: "IBM Plex Mono", monospace;
 }
 .trade-price {
-  padding: 2px 5px; text-align: center; font-weight: 700;
+  padding: 2px 5px; text-align: center; font-weight: 500;
   font-family: "IBM Plex Mono", monospace;
 }
 .trade-vol {
@@ -537,11 +537,40 @@
 }
 .trade-change { padding: 2px 5px; text-align: center; font-family: "IBM Plex Mono", monospace; }
 .trade-side {
-  padding: 2px 6px; text-align: right; font-size: 9px; font-weight: 700;
+  padding: 2px 6px; text-align: right; font-size: 9px; font-weight: 500;
   font-family: "IBM Plex Mono", monospace;
 }
 
 .trade-empty { padding: 12px; text-align: center; color: #3a4a5a; font-size: 11px; }
+
+.trade-empty-archived {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 16px 12px;
+  font-size: 11px;
+  color: #3a4a5a;
+  text-align: center;
+}
+.trade-empty-sub {
+  font-size: 9px;
+  color: #2a3a4a;
+}
+
+.archive-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(0,212,255,0.12);
+  color: #00d4ff;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border: 1px solid rgba(0,212,255,0.3);
+}
 
 .flash-up { animation: flash-up 0.5s ease; }
 .flash-down { animation: flash-down 0.5s ease; }
