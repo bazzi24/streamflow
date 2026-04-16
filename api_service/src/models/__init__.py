@@ -231,11 +231,29 @@ class Candlestick1M(Base):
 
     symbol = Column(String(20), primary_key=True)
     time_start = Column(DateTime, primary_key=True)
+    trading_date = Column(Date, nullable=False, default="2000-01-01")
+    time = Column(String(20), nullable=False, default="00:00:00")
     open = Column(Numeric(20, 4))
     high = Column(Numeric(20, 4))
     low = Column(Numeric(20, 4))
     close = Column(Numeric(20, 4))
     volume = Column(BigInteger)
+
+
+class TradeMatchArchive(Base):
+    """Maps data.trade_match_archive — one row per matched trade."""
+    __tablename__ = "trade_match_archive"
+    __table_args__ = {"schema": "data"}
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    trading_date = Column(Date, nullable=False)
+    time = Column(String(20), nullable=False)
+    symbol = Column(String(20), nullable=False)
+    price = Column(Numeric(20, 4), nullable=False)
+    volume = Column(BigInteger, nullable=False, default=0)
+    side = Column(String(10), nullable=False)
+    price_change = Column(Numeric(20, 4))
+    created_at = Column(DateTime)
 
 
 class Candlestick1D(Base):
