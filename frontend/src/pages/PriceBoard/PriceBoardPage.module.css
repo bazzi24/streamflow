@@ -86,7 +86,7 @@
 
 .logoText {
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 500;
   color: var(--accent-cyan);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -234,7 +234,7 @@
   align-items: center;
   padding: 0 14px;
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 500;
   color: rgba(255,255,255,0.8);
   background: transparent;
   border: none;
@@ -271,7 +271,7 @@
 
 .navClockTime {
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 500;
   color: var(--accent-cyan);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -329,7 +329,7 @@
 
 .tickerBadge {
   font-size: 9px;
-  font-weight: 700;
+  font-weight: 500;
   color: var(--accent-cyan);
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -339,7 +339,7 @@
 
 .tickerValue {
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 500;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -347,7 +347,7 @@
 
 .tickerPct {
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -384,7 +384,7 @@
 
 .tickerAdv {
   font-size: 9px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--accent-green);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -397,7 +397,7 @@
 
 .tickerDec {
   font-size: 9px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--accent-red);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -419,7 +419,7 @@
 
 .breadthHeader {
   font-size: 9px;
-  font-weight: 700;
+  font-weight: 500;
   color: rgba(255,255,255,0.35);
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -433,7 +433,7 @@
 
 .breadthSymbol {
   font-size: 9px;
-  font-weight: 400;
+  font-weight: 500;
   color: rgba(255,255,255,0.5);
   text-transform: uppercase;
   width: 52px;
@@ -449,7 +449,7 @@
 
 .breadthUp {
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--accent-green);
   font-variant-numeric: tabular-nums;
   min-width: 28px;
@@ -463,7 +463,7 @@
 
 .breadthDown {
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--accent-red);
   font-variant-numeric: tabular-nums;
   min-width: 28px;
@@ -502,7 +502,7 @@
   height: 22px;
   font-family: var(--font-mono);
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: none;
   text-align: center;
@@ -598,31 +598,31 @@
 .col-san      { width: 40px;  color: var(--accent-blue);   font-weight: 500; }
 .col-tc       { width: 40px;  color: var(--text-secondary); }
 /* Buy side — green */
-.col-bid3     { width: 54px;  color: var(--accent-green); }
-.col-kl3      { width: 62px;  color: var(--text-primary); }
-.col-bid2     { width: 54px;  color: var(--accent-green); }
-.col-kl2      { width: 62px;  color: var(--text-primary); }
-.col-bid1     { width: 54px;  color: var(--accent-green); }
-.col-kl1      { width: 62px;  color: var(--text-primary); }
+.col-bid3     { width: 54px;  color: var(--accent-green); font-weight: 500;}
+.col-kl3      { width: 62px;  color: var(--text-primary); font-weight: 500;}
+.col-bid2     { width: 54px;  color: var(--accent-green); font-weight: 500;}
+.col-kl2      { width: 62px;  color: var(--text-primary); font-weight: 500;}
+.col-bid1     { width: 54px;  color: var(--accent-green); font-weight: 500;}
+.col-kl1      { width: 62px;  color: var(--text-primary); font-weight: 500;}
 /* Matched */
 .col-gia      { width: 62px;  font-weight: 500; }
-.col-kl       { width: 62px;  color: var(--text-primary); }
+.col-kl       { width: 62px;  color: var(--text-primary); font-weight: 500;}
 /* Change & pct — inside matched section */
 .col-change   { width: 54px;  font-weight: 500; }
 .col-pct      { width: 54px;  font-weight: 500; }
 /* Sell side — red */
-.col-ask1     { width: 54px;  color: var(--accent-red); }
-.col-akl1     { width: 62px;  color: var(--text-primary); }
-.col-ask2     { width: 54px;  color: var(--accent-red); }
-.col-akl2     { width: 62px;  color: var(--text-primary); }
-.col-ask3     { width: 54px;  color: var(--accent-red); }
-.col-akl3     { width: 62px;  color: var(--text-primary); }
+.col-ask1     { width: 54px;  color: var(--accent-red); font-weight: 500;}
+.col-akl1     { width: 62px;  color: var(--text-primary); font-weight: 500;}
+.col-ask2     { width: 54px;  color: var(--accent-red); font-weight: 500;}
+.col-akl2     { width: 62px;  color: var(--text-primary); font-weight: 500;}
+.col-ask3     { width: 54px;  color: var(--accent-red); font-weight: 500;}
+.col-akl3     { width: 62px;  color: var(--text-primary); font-weight: 500;}
 /* Stats */
-.col-tongkl   { width: 70px;  color: var(--text-primary); }
-.col-cao      { width: 45px;  color: var(--accent-green); }
-.col-thap     { width: 45px;  color: var(--accent-red); }
-.col-nnmua    { width: 64px;  color: var(--accent-blue); }
-.col-nnban    { width: 64px;  color: var(--accent-blue); }
+.col-tongkl   { width: 70px;  color: var(--text-primary); font-weight: 500;}
+.col-cao      { width: 45px;  color: var(--accent-green); font-weight: 500;}
+.col-thap     { width: 45px;  color: var(--accent-red); font-weight: 500;}
+.col-nnmua    { width: 64px;  color: var(--accent-blue); font-weight: 500;}
+.col-nnban    { width: 64px;  color: var(--accent-blue); font-weight: 500;}
 .col-room     { width: 80px;  color: var(--accent-yellow); border-right: none; }
 
 /* ── Color Variants ─────────────────────────────────────────── */
@@ -757,3 +757,38 @@
 .flex1 { flex: 1; }
 .overflowHidden { overflow: hidden; }
 .minW0 { min-width: 0; }
+
+/* Highlight background
+/* Hiệu ứng chớp xanh khi tăng hoặc có dữ liệu mới */
+.flashUp {
+  animation: flashGreen 0.6s ease-out;
+}
+
+/* Hiệu ứng chớp đỏ khi giảm */
+.flashDown {
+  animation: flashRed 0.6s ease-out;
+}
+
+@keyframes flashGreen {
+  0% {
+    background-color: rgba(0, 230, 118, 0.4); /* Màu var(--accent-green) với độ trong suốt */
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+@keyframes flashRed {
+  0% {
+    background-color: rgba(255, 61, 87, 0.4); /* Màu var(--accent-red) với độ trong suốt */
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+/* Thêm transition để khi hết animation nó quay về màu cũ mượt hơn */
+.priceCell {
+  transition: background-color 0.4s ease;
+  /* Giữ các thuộc tính cũ của bạn */
+}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -20,6 +20,16 @@ import { TimeAndSales } from "../components/TimeAndSales";
 import { StockInfo } from "../components/StockInfo";
 import { Header } from "../components/Header";
 import { formatPrice, formatVolume, priceColor } from "../lib/utils";
+
+// ── Debounce helper ─────────────────────────────────────────────────────────
+function useDebounce<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(id);
+  }, [value, delay]);
+  return debounced;
+}
 
 // ── Chart Series IDs ──────────────────────────────────────────────────────────
 
@@ -81,12 +91,17 @@ export function ChartPage() {
     activeIndicators,
   } = useAppStore();
 
+  // ── Debounce interval switch to avoid flash between old/new data ─────────────
+  // React Query will cancel the old fetch and start the new one immediately;
+  // the debounce prevents the chart from briefly rendering with stale data.
+  const debouncedInterval = useDebounce(activeInterval, 150);
+
   // ── Data ───────────────────────────────────────────────────────────────────
   const { data: intraday = [], isLoading: intradayLoading } = useQuery({
-    queryKey: ["ohlcv", symbol, activeInterval],
-    queryFn: () => stockApi.getOHLCV(symbol!, activeInterval, 500).then((r) => r.data),
+    queryKey: ["ohlcv", symbol, debouncedInterval],
+    queryFn: () => stockApi.getOHLCV(symbol!, debouncedInterval, 500).then((r) => r.data),
     enabled: !!symbol,
-    staleTime: 30_000,
+    staleTime: 0,
   });
 
   const { data: daily = [] } = useQuery({
@@ -97,7 +112,7 @@ export function ChartPage() {
   });
 
   // Use intraday for short intervals, daily for longer ones
-  const chartData = ["1D", "1W", "1M"].includes(activeInterval) ? daily : intraday;
+  const chartData = ["1D", "1W", "1M"].includes(debouncedInterval) ? daily : intraday;
 
   // ── Chart refs ──────────────────────────────────────────────────────────────
   const containerRef = useRef<HTMLDivElement>(null);
@@ -106,6 +121,9 @@ export function ChartPage() {
     candle: null, line: null, area: null, bar: null, volume: null,
     ma5: null, ma10: null, ma20: null, ma50: null,
   });
+  // Track previous chartData length so we only call fitContent on mount, not on
+  // every data update (which shifts the viewport unpredictably on interval switch).
+  const prevDataLengthRef = useRef<number>(0);
 
   // ── Init chart ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -276,8 +294,14 @@ export function ChartPage() {
     if (inds.includes("MA20")) s.ma20!.setData(calcMA(chartData, 20));
     if (inds.includes("MA50")) s.ma50!.setData(calcMA(chartData, 50));
 
-    chartRef.current.timeScale().fitContent();
-  }, [chartData, activeChartType, activeIndicators]);
+    // Only call fitContent on first load (prev length was 0), not on every
+    // data change — calling it on interval switch shifts the viewport unpredictably.
+    const isFirstLoad = prevDataLengthRef.current === 0;
+    if (isFirstLoad) {
+      chartRef.current.timeScale().fitContent();
+    }
+    prevDataLengthRef.current = chartData.length;
+  }, [chartData, activeChartType, activeIndicators, debouncedInterval]);
 
   // ── Handlers ────────────────────────────────────────────────────────────────
   const handleIntervalChange = useCallback((_interval: TimeInterval) => {
