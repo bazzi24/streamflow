@@ -14,7 +14,7 @@ import {
   type Time,
 } from "lightweight-charts";
 import { stockApi } from "../api/stockApi";
-import type { OHLCVBar, OrderBook, StockQuote } from "../api/stockApi";
+import type { OHLCVBar, OrderBook, StockQuote, TradeMatch } from "../api/stockApi";
 import { useStockWebSocket } from "../hooks/useStockWebSocket";
 import {
   computeSMA,
@@ -29,14 +29,6 @@ import styles from "./ChartPageV2.module.css";
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
-
-interface TradeTick {
-  time: string;
-  price: number;
-  volume: number;
-  change: number;
-  side: "buy" | "sell" | "neutral";
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Static Data
@@ -69,6 +61,14 @@ function fmtChange(v: number, decimals = 2): string {
 
 function toChartTime(ts: number): Time {
   return (ts / 1000) as Time;
+}
+
+// ── Market session helpers ───────────────────────────────────────────────────────
+/** Returns true if current Vietnam time is past 3:30 PM. */
+function isAfterMarketClose(): boolean {
+  const now = new Date();
+  const h = now.getHours(), m = now.getMinutes();
+  return h * 60 + m > 15 * 60 + 30;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -117,8 +117,11 @@ function MainChart({ symbol, interval, activeIndicators, chartType, priceScaleMo
   const bbMap     = useRef(new Map<string, ISeriesApi<"Line">>());
   const legendRef = useRef<HTMLDivElement | null>(null);
   const plMap     = useRef(new Map<string, ReturnType<ISeriesApi<"Candlestick">["createPriceLine"]>>());
-  const liveBarRef = useRef<{ timestamp: number; open: number; high: number; low: number; close: number } | null>(null);
+  const liveBarRef = useRef<{ timestamp: number; open: number; high: number; low: number; close: number; volume: number } | null>(null);
   const barsRef = useRef<OHLCVBar[]>([]);
+  // Track the timestamp of the last bar returned by the REST API so we know when
+  // a WS candle_update is a new bar vs an update to the existing last bar.
+  const lastRestBarRef = useRef<number>(0);
 
   const { data: ohlcvData } = useQuery({
     queryKey: ["ohlcv", symbol, interval],
@@ -358,7 +361,10 @@ function MainChart({ symbol, interval, activeIndicators, chartType, priceScaleMo
 
     chartRef.current.timeScale().fitContent();
 
-    // Reset live bar on new dataset
+    // Track the last bar's timestamp so WS candle_update can distinguish
+    // between "update to last bar" vs "brand new bar".
+    lastRestBarRef.current = bars[bars.length - 1]?.timestamp ?? 0;
+    // Reset liveBarRef so the next WS price_update starts a clean bar.
     liveBarRef.current = null;
 
     // Scroll to realtime on intraday intervals
@@ -453,33 +459,79 @@ function MainChart({ symbol, interval, activeIndicators, chartType, priceScaleMo
 
   // ── WebSocket live tick ─────────────────────────────────────────────────────
   const handleWsMsg = useCallback((msg: unknown) => {
-    const m = msg as { type?: string; last_price?: number; highest?: number; lowest?: number; volume?: number };
+    const m = msg as {
+      type?: string;
+      // price_update fields
+      last_price?: number;
+      volume?: number;
+      // candlestick_update fields (finalised 1m bar from bridge)
+      timestamp?: number;
+      open?: number;
+      high?: number;
+      low?: number;
+      close?: number;
+    };
+
+    // ── Finalised 1m candle from MySQL bridge ─────────────────────────────────
+    if (m.type === "candlestick_update" && m.timestamp != null) {
+      const wsTimestamp = Math.floor((m.timestamp as number) / 1000) as Time;
+      const isNewBar = wsTimestamp !== lastRestBarRef.current;
+
+      candleRef.current?.update({
+        time: wsTimestamp,
+        open: m.open ?? 0,
+        high: m.high ?? 0,
+        low: m.low ?? 0,
+        close: m.close ?? 0,
+      });
+      volRef.current?.update({
+        time: wsTimestamp,
+        value: m.volume ?? 0,
+        color: (m.close ?? 0) >= (m.open ?? 0) ? "rgba(0,230,118,0.5)" : "rgba(255,61,87,0.5)",
+      });
+
+      // If this is a brand new bar (not just an update to the last existing bar),
+      // mark it as the new last-rest-bar so future WS updates continue correctly.
+      if (isNewBar) lastRestBarRef.current = wsTimestamp as number;
+      return;
+    }
+
+    // ── Real-time price tick (updates the in-progress last bar) ───────────────
     if (m.type !== "price_update" || m.last_price == null) return;
+
     const price = m.last_price;
+    const nowSec = Math.floor(Date.now() / 1000);
 
     if (!liveBarRef.current) {
       liveBarRef.current = {
-        timestamp: Math.floor(Date.now() / 1000),
+        timestamp: nowSec,
         open: price, high: price, low: price, close: price,
+        volume: m.volume ?? 0,
       };
     } else {
-      liveBarRef.current.high = Math.max(liveBarRef.current.high, price);
+      liveBarRef.current.high  = Math.max(liveBarRef.current.high, price);
       liveBarRef.current.low  = Math.min(liveBarRef.current.low, price);
       liveBarRef.current.close = price;
+      liveBarRef.current.volume += m.volume ?? 0;
     }
 
-    candleRef.current?.update({
-      time: liveBarRef.current.timestamp as Time,
-      open: liveBarRef.current.open,
-      high: liveBarRef.current.high,
-      low:  liveBarRef.current.low,
-      close: liveBarRef.current.close,
-    });
-    volRef.current?.update({
-      time: liveBarRef.current.timestamp as Time,
-      value: m.volume ?? 0,
-      color: price >= liveBarRef.current.open ? "rgba(0,230,118,0.5)" : "rgba(255,61,87,0.5)",
-    });
+    // Only update the chart if the live bar timestamp is still within the
+    // same minute as the REST bar's last bar (otherwise the finalised 1m bar
+    // from candlestick_update already covers that minute).
+    if (liveBarRef.current.timestamp === lastRestBarRef.current) {
+      candleRef.current?.update({
+        time: liveBarRef.current.timestamp as Time,
+        open: liveBarRef.current.open,
+        high: liveBarRef.current.high,
+        low:  liveBarRef.current.low,
+        close: liveBarRef.current.close,
+      });
+      volRef.current?.update({
+        time: liveBarRef.current.timestamp as Time,
+        value: liveBarRef.current.volume,
+        color: price >= liveBarRef.current.open ? "rgba(0,230,118,0.5)" : "rgba(255,61,87,0.5)",
+      });
+    }
   }, []);
 
   useStockWebSocket({ symbol, onMessage: handleWsMsg });
@@ -734,19 +786,38 @@ function MarketDepth({ symbol, t }: { symbol: string; t: (key: string) => string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TradeMatching — live trade tape
+// TradeMatching — live + archived tape
 // ─────────────────────────────────────────────────────────────────────────────
 
-function TradeMatching({ symbol, t }: { symbol: string; t: (key: string) => string }) {
-  const [ticks, setTicks] = useState<TradeTick[]>([]);
+interface TradeTick {
+  time: string;
+  price: number;
+  volume: number;
+  change: number;
+  side: "buy" | "sell" | "neutral";
+}
 
+function TradeMatching({ symbol, t }: { symbol: string; t: (key: string) => string }) {
+  const [liveTicks, setLiveTicks] = useState<TradeTick[]>([]);
+  const archiveMode = isAfterMarketClose();
+
+  // ── Fetch archived trade matches (after market close) ──────────────────
+  const { data: archivedMatches } = useQuery({
+    queryKey: ["trade-matches", symbol],
+    queryFn: () => stockApi.getTradeMatches(symbol).then((r) => r.data),
+    staleTime: 60_000,
+    // Only fetch archive when market is closed
+    enabled: archiveMode,
+  });
+
+  // ── Live WebSocket ticks (during trading hours) ──────────────────────
   useStockWebSocket({
     symbol,
     onMessage: (msg) => {
       if (msg.type === "price_update" && (msg as unknown as { symbol: string }).symbol === symbol) {
         const m = msg as unknown as { time?: string; last_price: number; volume: number; change: number };
         const side: TradeTick["side"] = m.change > 0 ? "buy" : m.change < 0 ? "sell" : "neutral";
-        setTicks((prev) => [
+        setLiveTicks((prev) => [
           { time: m.time ?? new Date().toLocaleTimeString("vi-VN"), price: m.last_price, volume: m.volume ?? 0, change: m.change ?? 0, side },
           ...prev.slice(0, 49),
         ]);
@@ -754,32 +825,77 @@ function TradeMatching({ symbol, t }: { symbol: string; t: (key: string) => stri
     },
   });
 
+  // ── Build display ticks from archive ─────────────────────────────────
+  const displayTicks: TradeTick[] = useMemo(() => {
+    if (!archiveMode || !archivedMatches) return liveTicks;
+
+    if (!archivedMatches.length) {
+      return []; // empty archive
+    }
+
+    return archivedMatches.map((r: TradeMatch) => ({
+      time:   r.time,
+      price:  r.price,
+      volume: r.volume,
+      change: r.price_change ?? 0,
+      side:   r.side === "buy" ? "buy" : r.side === "sell" ? "sell" : "neutral",
+    }));
+  }, [archiveMode, archivedMatches, liveTicks]);
+
+  const isEmpty = displayTicks.length === 0;
+
   return (
     <div className={styles["trade-section"]}>
       <div className={styles["section-header"]}>
         <span className={styles["section-title"]}>{t("chart.tradeMatching")}</span>
-        <span className={styles["section-header-right"]}>{ticks.length} ticks</span>
+        {archiveMode && (
+          <span className={styles["archive-badge"]}>{t("chart.archiveBadge")}</span>
+        )}
+        {displayTicks.length > 0 && (
+          <span className={styles["section-header-right"]}>
+            {displayTicks.length} trades
+          </span>
+        )}
       </div>
+
+      {/* Archive subtitle */}
+      {archiveMode && isEmpty && (
+        <div className={styles["trade-empty-archived"]}>
+          <span>{t("chart.sessionClosed")}</span>
+          <span className={styles["trade-empty-sub"]}>{t("chart.archivedSubtitle")}</span>
+        </div>
+      )}
+
+      {!archiveMode && isEmpty && (
+        <div className={styles["trade-empty"]}>{t("chart.waiting")}</div>
+      )}
+
       <div className={styles["trade-table-wrap"]}>
         <table className={styles["trade-table"]}>
           <thead>
             <tr>
-              <th>{t("chart.time")}</th><th>{t("chart.price")}</th><th>{t("chart.vol")}</th><th>{t("chart.change")}</th><th>{t("chart.side")}</th>
+              <th>{t("chart.time")}</th>
+              <th>{t("chart.price")}</th>
+              <th>{t("chart.vol")}</th>
+              <th>{t("chart.change")}</th>
+              <th>{t("chart.side")}</th>
             </tr>
           </thead>
           <tbody>
-            {ticks.length === 0 && (
-              <tr><td colSpan={5} className={styles["trade-empty"]}>{t("chart.waiting")}</td></tr>
-            )}
-            {ticks.map((tick, idx) => (
-              <tr key={idx} className={`${styles["trade-row"]} ${tick.side === "buy" ? styles.buy : tick.side === "sell" ? styles.sell : ""}`}>
+            {displayTicks.map((tick, idx) => (
+              <tr
+                key={idx}
+                className={`${styles["trade-row"]} ${tick.side === "buy" ? styles.buy : tick.side === "sell" ? styles.sell : ""}`}
+              >
                 <td className={styles["trade-time"]}>{tick.time}</td>
                 <td className={`${styles["trade-price"]} ${tick.change >= 0 ? styles.up : styles.down}`}>
                   {formatPrice(tick.price)}
                 </td>
                 <td className={styles["trade-vol"]}>{formatVolume(tick.volume)}</td>
                 <td className={styles["trade-change"]}>
-                  <span style={{ color: tick.change >= 0 ? "#00e676" : "#ff3d57" }}>{fmtChange(tick.change)}</span>
+                  <span style={{ color: tick.change >= 0 ? "#00e676" : "#ff3d57" }}>
+                    {fmtChange(tick.change)}
+                  </span>
                 </td>
                 <td className={`${styles["trade-side"]} ${tick.side === "buy" ? styles.up : tick.side === "sell" ? styles.down : ""}`}>
                   {tick.side === "buy" ? "M" : tick.side === "sell" ? "B" : "—"}
