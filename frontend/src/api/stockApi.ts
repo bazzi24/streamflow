@@ -102,6 +102,16 @@ export interface MarketOverview {
   top_losers: StockSummary[];
 }
 
+export interface TradeMatch {
+  trading_date: string;
+  time: string;
+  symbol: string;
+  price: number;
+  volume: number;
+  side: "buy" | "sell";
+  price_change: number | null;
+}
+
 // ── Auth ───────────────────────────────────────────────────────────────────
 
 export interface LoginRequest {
@@ -141,6 +151,8 @@ export const stockApi = {
     client.get<OHLCVBar[]>(`/stocks/${symbol}/ohlcv`, { params: { interval, limit } }),
   getHistory: (symbol: string, days = 30) =>
     client.get<OHLCVBar[]>(`/stocks/${symbol}/history`, { params: { days } }),
+  getTradeMatches: (symbol: string, date?: string) =>
+    client.get<TradeMatch[]>(`/stocks/${symbol}/trade-matches`, { params: { date: date ?? undefined } }),
 };
 
 // ── Market ────────────────────────────────────────────────────────────────
