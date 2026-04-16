@@ -5,7 +5,7 @@ from ...services.stock_service import StockService
 from ...services.stock_cache import stock_cache
 from ...schemas.stock import (
     StockQuote, OrderBook, OHLCVBar, SymbolMeta, StockSummary,
-    MarketOverviewResponse,
+    MarketOverviewResponse, TradeMatch,
 )
 from typing import Annotated
 
@@ -93,3 +93,20 @@ def get_history(
 ):
     """Daily OHLCV bars for N days."""
     return svc.get_history(symbol, days=days)
+
+
+@router.get("/{symbol}/trade-matches", response_model=list[TradeMatch])
+def get_trade_matches(
+    symbol: str,
+    date: Annotated[str | None, Query(
+        description="Trading date (YYYY-MM-DD). Defaults to today (Vietnam time)."
+    )] = None,
+    svc: StockService = Depends(get_stock_service),
+):
+    """Matched-trade archive for a symbol (one row per buy/sell match).
+
+    - During market hours (9:15 AM – 3:30 PM UTC+7): table is live-populated by Kafka.
+    - After market close: returns the full day's archived session.
+    - Returns empty list outside market hours or before the archive is ready.
+    """
+    return svc.get_trade_matches(symbol, date=date)
