@@ -41,14 +41,17 @@ import pymysql
 # ── SQL ───────────────────────────────────────────────────────────────────────
 
 UPSERT_1M = """
-    INSERT INTO data.candlestick_1m (symbol, time_start, open, high, low, close, volume)
-    VALUES (%s, %s, %s, %s, %s, %s, %s)
+    INSERT INTO data.candlestick_1m
+        (symbol, time_start, trading_date, `time`, open, high, low, close, volume)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
     ON DUPLICATE KEY UPDATE
-        open   = IF(VALUES(open)   IS NOT NULL AND VALUES(open)   <> 0, VALUES(open),   open),
-        high   = IF(VALUES(high)   >  high,                         VALUES(high),         high),
-        low    = IF(VALUES(low)    <  low  OR  VALUES(low)   = 0,    VALUES(low),          low),
-        close  = VALUES(close),
-        volume = volume + VALUES(volume)
+        trading_date = IF(VALUES(trading_date) IS NOT NULL, VALUES(trading_date), trading_date),
+        `time`       = IF(VALUES(`time`)       IS NOT NULL, VALUES(`time`),       `time`),
+        open         = IF(VALUES(open)   IS NOT NULL AND VALUES(open)   <> 0, VALUES(open),   open),
+        high         = IF(VALUES(high)   >  high,                         VALUES(high),         high),
+        low          = IF(VALUES(low)    <  low  OR  VALUES(low)   = 0,    VALUES(low),          low),
+        close        = VALUES(close),
+        volume       = volume + VALUES(volume)
 """
 
 UPSERT_1D = """
@@ -168,6 +171,8 @@ class CandleState:
             "low": self.cur_1m_low,
             "close": self.cur_1m_close,
             "volume": self.cur_1m_vol,
+            "trading_date": self.cur_1m_start.date() if self.cur_1m_start else None,
+            "time": self.cur_1m_start.strftime("%H:%M:%S") if self.cur_1m_start else "00:00:00",
         }
 
     def _emit_1d(self):
@@ -238,7 +243,7 @@ def _hydrate_from_db(conn) -> dict[str, CandleState]:
 
     # Latest 1m bar per symbol
     cur.execute("""
-        SELECT symbol, time_start, open, high, low, close, volume
+        SELECT symbol, time_start, trading_date, `time`, open, high, low, close, volume
         FROM data.candlestick_1m
         WHERE (symbol, time_start) IN (
             SELECT symbol, MAX(time_start)
@@ -246,7 +251,7 @@ def _hydrate_from_db(conn) -> dict[str, CandleState]:
             GROUP BY symbol
         )
     """)
-    for (symbol, time_start, open_, high, low, close, volume) in cur.fetchall():
+    for (symbol, time_start, trading_date, t, open_, high, low, close, volume) in cur.fetchall():
         cs = CandleState(symbol)
         cs.cur_1m_start = time_start
         cs.cur_1m_open = float(open_) if open_ is not None else None
@@ -295,8 +300,9 @@ class CandlestickConsumer(threading.Thread):
       - On shutdown → flush everything.
     """
 
-    BATCH_SIZE = 200          # symbols before a forced flush
-    FLUSH_INTERVAL_SEC = 5    # periodic flush timer
+    BATCH_SIZE = 200           # completed bars before a forced flush
+    FLUSH_INTERVAL_SEC = 5     # how often the flush thread wakes up (ms, not written)
+    SLOW_FLUSH_SEC = 60        # crash-recovery DB write interval for in-progress bars
 
     def __init__(self):
         super().__init__(daemon=True, name="CandlestickConsumer")
@@ -407,6 +413,7 @@ class CandlestickConsumer(threading.Thread):
         if prev_1m:
             self._pending_1m.append((
                 prev_1m["symbol"], prev_1m["time_start"],
+                prev_1m.get("trading_date"), prev_1m.get("time"),
                 prev_1m["open"], prev_1m["high"], prev_1m["low"], prev_1m["close"], prev_1m["volume"],
             ))
             emitted = True
@@ -492,27 +499,23 @@ class CandlestickConsumer(threading.Thread):
         self._pending_1d = patched
 
     def _flush(self):
-        """Write pending 1m + 1d bars to MySQL.
+        """Write only bars that were closed by a tick boundary.
 
-        Before flushing, emit all in-progress 1m bars (bars with data but not yet
-        closed by a tick in the next bucket). This ensures bars are written even
-        when no new tick arrives to trigger the close (e.g., slow trading or
-        after market close).
+        In-progress (unfinalised) bars are NEVER written here.
+        They are only written by _slow_flush() for crash-recovery purposes.
         """
-        self._emit_inprogress_1m()
-
         if not self._pending_1m and not self._pending_1d:
             return
 
         try:
             if self._pending_1m:
                 self._cursor.executemany(UPSERT_1M, self._pending_1m)
-                self.logger.info("Upserted %d × 1m candles", len(self._pending_1m))
+                self.logger.info("Flushed %d × 1m completed candles", len(self._pending_1m))
 
             if self._pending_1d:
                 self._fill_foreign_room(self._conn)
                 self._cursor.executemany(UPSERT_1D, self._pending_1d)
-                self.logger.info("Upserted %d × 1d candles", len(self._pending_1d))
+                self.logger.info("Flushed %d × 1d completed candles", len(self._pending_1d))
 
             self._conn.commit()
             self._consumer.commit()
@@ -522,6 +525,35 @@ class CandlestickConsumer(threading.Thread):
 
         except Exception as e:
             self.logger.error("Flush error: %s", e)
+            self._conn.rollback()
+            self._reconnect_db()
+
+    def _slow_flush(self):
+        """Write in-progress (unfinalised) 1m bars to MySQL for crash-recovery.
+
+        This is the ONLY place where _emit_inprogress_1m() is called.
+        These bars are written purely so that on restart _hydrate_from_db()
+        can restore them — they must NOT be broadcast to WebSocket clients
+        (the bridge only broadcasts bars ≥ 60 s old).
+        """
+        self._emit_inprogress_1m()
+
+        if not self._pending_1m:
+            return
+
+        try:
+            self._cursor.executemany(UPSERT_1M, self._pending_1m)
+            self.logger.info(
+                "Slow-flushed %d in-progress 1m candles for crash-recovery",
+                len(self._pending_1m),
+            )
+            self._conn.commit()
+            self._consumer.commit()
+            self._pending_1m.clear()
+            # Note: in-memory state was already reset by _emit_inprogress_1m().
+            # On restart _hydrate_from_db() will re-open those bars via upsert.
+        except Exception as e:
+            self.logger.error("Slow-flush error: %s", e)
             self._conn.rollback()
             self._reconnect_db()
 
@@ -538,6 +570,7 @@ class CandlestickConsumer(threading.Thread):
                 continue
             self._pending_1m.append((
                 bar["symbol"], bar["time_start"],
+                bar.get("trading_date"), bar.get("time"),
                 bar["open"], bar["high"], bar["low"], bar["close"], bar["volume"],
             ))
             # Reset in-memory state to start a fresh bar for the same minute.
@@ -551,18 +584,36 @@ class CandlestickConsumer(threading.Thread):
             state.cur_1m_vol = 0
 
     def _periodic_flush_loop(self):
-        """Background thread: flush in-flight bars every FLUSH_INTERVAL_SEC."""
+        """Background thread: slow-flush in-progress bars for crash-recovery every SLOW_FLUSH_SEC.
+
+        The regular _flush() (for tick-closed bars) is still called from run() when the
+        batch buffer is full, so this thread ONLY handles slow-flush for crash-recovery.
+        """
+        next_slow_flush = time.time() + self.SLOW_FLUSH_SEC
+
         while not self._stop.is_set():
             self._stop.wait(timeout=self.FLUSH_INTERVAL_SEC)
             if self._stop.is_set():
                 break
-            elapsed = time.time() - self._last_flush
-            if elapsed >= self.FLUSH_INTERVAL_SEC:
+
+            now = time.time()
+
+            # ── Slow flush: write in-progress bars to DB for crash-recovery ────
+            if now >= next_slow_flush:
                 self.logger.debug(
-                    "Periodic flush triggered (%.1fs elapsed, %d states, %d pending)",
-                    elapsed, len(self._states), len(self._pending_1m),
+                    "Periodic slow-flush triggered (%.1fs elapsed, %d states, %d pending 1m)",
+                    now - (next_slow_flush - self.SLOW_FLUSH_SEC),
+                    len(self._states),
+                    len(self._pending_1m),
                 )
-                self._flush()
+                self._slow_flush()
+                next_slow_flush = now + self.SLOW_FLUSH_SEC
+
+            # ── Still flush tick-closed bars if batch is big enough ─────────────
+            elapsed = now - self._last_flush
+            if elapsed >= self.FLUSH_INTERVAL_SEC:
+                if len(self._pending_1m) + len(self._pending_1d) >= self.BATCH_SIZE:
+                    self._flush()
 
     def run(self):
         self.logger.info("CandlestickConsumer starting...")
@@ -611,6 +662,7 @@ class CandlestickConsumer(threading.Thread):
                 if kind == "1m":
                     self._pending_1m.append((
                         bar["symbol"], bar["time_start"],
+                        bar.get("trading_date"), bar.get("time"),
                         bar["open"], bar["high"], bar["low"], bar["close"], bar["volume"],
                     ))
                 else:
