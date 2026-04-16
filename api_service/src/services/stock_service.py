@@ -3,14 +3,15 @@ from sqlalchemy import func, desc
 from ..models import (
     StreamingDataTrade, StreamingDataQuote, StreamingIndexData,
     SymbolDim, StockTradeFact, StockOrderBookFact, MarketIndexFact,
-    Candlestick1M, Candlestick1D,
+    Candlestick1M, Candlestick1D, TradeMatchArchive,
 )
 from ..database import get_streaming_db, get_db
 from ..schemas.stock import (
     StockQuote, OrderBook, OrderBookLevel, OHLCVBar, SymbolMeta,
     StockSummary, IndexOverview, MarketOverviewResponse, BidAskLevel,
+    TradeMatch,
 )
-from datetime import timezone, timedelta
+from datetime import datetime, timezone, timedelta
 import logging
 from functools import lru_cache
 
@@ -668,3 +669,42 @@ class StockService:
             top_gainers=top_gainers,
             top_losers=top_losers,
         )
+
+    # ── Trade Match Archive ────────────────────────────────────────────────
+
+    def get_trade_matches(self, symbol: str, date: str | None = None) -> list[TradeMatch]:
+        """
+        Return all matched-trade rows for a symbol from data.trade_match_archive.
+
+        If date is None, returns today's session trades (9:15 AM – 3:30 PM).
+        Sorted ascending by time so the tape reads chronologically.
+
+        Outside market hours, this table will be empty — the frontend will
+        fall back to the live WebSocket tape automatically.
+        """
+        query = (
+            self.db.query(TradeMatchArchive)
+            .filter(TradeMatchArchive.symbol == symbol)
+        )
+        if date:
+            query = query.filter(TradeMatchArchive.trading_date == date)
+        else:
+            # Default to today (Vietnam time)
+            today = (datetime.now(VIETNAM_TZ)).date()
+            query = query.filter(TradeMatchArchive.trading_date == today)
+
+        query = query.order_by(TradeMatchArchive.time.asc())
+
+        rows = query.all()
+        return [
+            TradeMatch(
+                trading_date=str(r.trading_date),
+                time=r.time or "",
+                symbol=r.symbol or "",
+                price=float(r.price) if r.price else 0.0,
+                volume=int(r.volume) if r.volume else 0,
+                side=r.side or "",
+                price_change=float(r.price_change) if r.price_change else None,
+            )
+            for r in rows
+        ]
