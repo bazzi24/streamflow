@@ -826,6 +826,9 @@ function TradeMatching({ symbol, t }: { symbol: string; t: (key: string) => stri
   });
 
   // ── Build display ticks from archive ─────────────────────────────────
+  // price_change from the DB is already the VND change value (bridge divided by 1000 on write).
+  // fmtChange() divides by 1000 again, so multiply back ×1000 so both archive and live ticks
+  // display the same correct value (e.g., DB stores 0.02 → ×1000=20 → fmtChange(20) → "+0.02").
   const displayTicks: TradeTick[] = useMemo(() => {
     if (!archiveMode || !archivedMatches) return liveTicks;
 
@@ -837,7 +840,7 @@ function TradeMatching({ symbol, t }: { symbol: string; t: (key: string) => stri
       time:   r.time,
       price:  r.price,
       volume: r.volume,
-      change: r.price_change ?? 0,
+      change: (r.price_change ?? 0) / 1000,
       side:   r.side === "buy" ? "buy" : r.side === "sell" ? "sell" : "neutral",
     }));
   }, [archiveMode, archivedMatches, liveTicks]);
