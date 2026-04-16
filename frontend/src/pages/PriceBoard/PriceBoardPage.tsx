@@ -238,7 +238,7 @@ function PriceRow({ row, isEven, isSelected, onClick }: PriceRowProps) {
         {formatPrice(matchedPrice)}
       </td>
       <td className={`${styles.priceCell} ${styles["col-kl"]}`} style={{ color: matchedColor }}>
-        {formatVolume((row.last_vol ?? 0))}
+        {formatVolume((row.total_vol ?? 0))}
       </td>
       <td className={`${styles.priceCell} ${styles["col-change"]} ${changeColor(row)}`}>
         {(row.change > 0 ? "+" : row.change < 0 ? "-" : "")}{formatPrice(Math.abs(row.change))}
