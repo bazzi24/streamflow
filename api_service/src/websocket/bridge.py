@@ -145,25 +145,31 @@ def _connect_streaming_db():
 async def _poll_candlesticks() -> None:
     """
     Background coroutine that polls data.candlestick_1m every CANDLESTICK_POLL_INTERVAL_SEC
-    for newly-closed 1m bars and broadcasts them as WebSocket candlestick_update messages.
+    and broadcasts only FINALISED bars via WebSocket.
 
-    Tracks the last-seen (symbol, time_start) per symbol so it only emits each bar once.
+    A bar is "finalised" when its minute is complete (≥ 60 s old in MySQL UTC).
+    This prevents the frontend from receiving a stream of ever-changing in-progress bars.
+
+    `finalised` dict tracks which (symbol, time_start) pairs have been broadcast so each
+    bar is emitted exactly once.
     """
-    last_seen: dict[str, datetime] = {}
+    finalised: dict[tuple[str, datetime], datetime] = {}
 
     while True:
         try:
             conn = _connect_streaming_db()
             cur = conn.cursor()
 
-            # Fetch all bars closed in the last 2 poll intervals (catches any that
-            # arrived between polls; deduplicated by last_seen check below).
-            cutoff = datetime.now() - timedelta(seconds=CANDLESTICK_POLL_INTERVAL_SEC * 2)
+            # Only consider bars whose minute bucket is fully closed (≥ 60 s old).
+            # This avoids broadcasting in-progress bars that may still be written
+            # by the slow-flush (CandlestickConsumer writes every 60 s for recovery).
+            now_utc = datetime.utcnow()
+            cutoff = now_utc - timedelta(seconds=60)
             cur.execute(
                 """
                 SELECT symbol, time_start, open, high, low, close, volume
                 FROM data.candlestick_1m
-                WHERE time_start > %s
+                WHERE time_start <= %s
                 ORDER BY symbol, time_start
                 """,
                 (cutoff,),
@@ -173,11 +179,11 @@ async def _poll_candlesticks() -> None:
             conn.close()
 
             for (symbol, time_start, open_, high, low, close, volume) in rows:
-                last = last_seen.get(symbol)
-                if last is not None and time_start <= last:
-                    # Already emitted this bar (or a newer one).
+                key = (symbol, time_start)
+                if key in finalised:
+                    # Already broadcast this completed bar.
                     continue
-                last_seen[symbol] = time_start
+                finalised[key] = time_start
 
                 try:
                     await ws_manager.broadcast_to_symbol(symbol, {
