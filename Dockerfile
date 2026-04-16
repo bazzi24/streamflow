@@ -59,7 +59,6 @@ RUN wget -q \
 # Copy application source
 COPY api_service api_service
 COPY common      common
-COPY conf        conf
 COPY consumer    consumer
 COPY dataSSI     dataSSI
 COPY etl         etl
