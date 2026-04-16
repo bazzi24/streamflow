@@ -452,7 +452,7 @@ class CandlestickConsumer(threading.Thread):
                 """,
                 flat,
             )
-            fr_map = {(row[0], str(row[1])): row for row in cur.fetchall()}
+            fr_map = {(str(row[0]), str(row[1])): row for row in cur.fetchall()}
         except Exception as e:
             self.logger.warning("Batched foreign_room fetch failed, falling back to per-row query: %s", e)
             fr_map = {}
@@ -483,9 +483,9 @@ class CandlestickConsumer(threading.Thread):
             if fr:
                 patched.append((
                     row[0], row[1], row[2], row[3], row[4], row[5], row[6],
+                    int(fr[0]) if fr[0] else 0,
+                    int(fr[1]) if fr[1] else 0,
                     int(fr[2]) if fr[2] else 0,
-                    int(fr[3]) if fr[3] else 0,
-                    int(fr[4]) if fr[4] else 0,
                 ))
             else:
                 patched.append(row)
