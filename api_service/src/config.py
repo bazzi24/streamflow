@@ -53,9 +53,9 @@ class Settings(BaseSettings):
     app_name: str = "StreamFlow API"
     debug: bool = False
 
-    # ── CORS — comma-separated origins ──────────────────────────────────────────
-    # Production example: http://localhost:3000,https://app.example.com
-    cors_origins: str = "http://localhost:3000"
+    # ── CORS — comma-separated origins — REQUIRED, no default ────────────────────
+    # Production must set explicitly: http://localhost:3000,https://app.example.com
+    cors_origins: str
 
     @field_validator("secret_key")
     @classmethod
