@@ -154,10 +154,18 @@ async def _poll_candlesticks() -> None:
     bar is emitted exactly once.
     """
     finalised: dict[tuple[str, datetime], datetime] = {}
+    conn = None
+    consecutive_errors = 0
+    max_backoff_seconds = 30
 
     while True:
         try:
-            conn = _connect_streaming_db()
+            # Create persistent connection on first iteration, or reconnect if needed
+            if conn is None or not conn.open:
+                conn = _connect_streaming_db()
+                consecutive_errors = 0  # reset error count on successful connection
+                logger.info("Candlestick poller connected to streaming DB")
+
             cur = conn.cursor()
 
             # Only consider bars whose minute bucket is fully closed (≥ 60 s old).
@@ -176,7 +184,6 @@ async def _poll_candlesticks() -> None:
             )
             rows = cur.fetchall()
             cur.close()
-            conn.close()
 
             for (symbol, time_start, open_, high, low, close, volume) in rows:
                 key = (symbol, time_start)
@@ -200,10 +207,30 @@ async def _poll_candlesticks() -> None:
                 except Exception as e:
                     logger.warning("WS broadcast error for %s: %s", symbol, e)
 
-        except Exception as e:
-            logger.warning("Candlestick poll error: %s", e)
+            # Success - sleep normal interval
+            await asyncio.sleep(CANDLESTICK_POLL_INTERVAL_SEC)
 
-        await asyncio.sleep(CANDLESTICK_POLL_INTERVAL_SEC)
+        except pymysql.MySQLError as e:
+            # Connection error or query failure
+            consecutive_errors += 1
+            backoff_seconds = min(2 ** consecutive_errors, max_backoff_seconds)
+            logger.warning(
+                "Candlestick poll error (attempt %d): %s. Backing off %ds",
+                consecutive_errors, e, backoff_seconds
+            )
+            # Close broken connection so we reconnect on next iteration
+            if conn and conn.open:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+            conn = None
+            await asyncio.sleep(backoff_seconds)
+
+        except Exception as e:
+            # Unexpected error - log and sleep normal interval
+            logger.exception("Unexpected candlestick poll error: %s", e)
+            await asyncio.sleep(CANDLESTICK_POLL_INTERVAL_SEC)
 
 
 async def kafka_bridge_loop() -> None:
@@ -254,8 +281,8 @@ async def kafka_bridge_loop() -> None:
                 if msg_type == "price_update" and symbol:
                     # Invalidate the /stocks cache so next poll picks up the new tick immediately.
                     await stock_cache.invalidate_all()
+                    # Only broadcast to clients watching this specific symbol.
                     await ws_manager.broadcast_to_symbol(symbol, ws_msg)
-                    await ws_manager.broadcast_all(ws_msg)
                 elif msg_type == "orderbook_update" and symbol:
                     await ws_manager.broadcast_to_symbol(symbol, ws_msg)
                 elif msg_type == "index_update":
