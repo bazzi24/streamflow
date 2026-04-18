@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 
-WORKDIR /app
+WORKDIR /app/api_service
 
 # Install uv
 RUN pip install uv
@@ -9,9 +9,10 @@ RUN pip install uv
 COPY pyproject.toml .
 RUN uv pip install --system -r pyproject.toml
 
-# Copy the entire src/ directory as a single unit (proper Python package at /app/src/)
+# Copy the entire src/ directory as a single unit (proper Python package at /app/api_service/src/)
 COPY src/ ./src/
-COPY migrations/ ./migrations/
+COPY alembic.ini .
+COPY alembic_migrations/ ./alembic_migrations/
 
 EXPOSE 8000
 
