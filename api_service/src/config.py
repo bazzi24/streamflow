@@ -34,10 +34,10 @@ class Settings(BaseSettings):
 
     @property
     def api_db_url(self) -> str:
-        """API DB — connects without a database name (db is created at runtime)."""
+        """API DB — full URL including database name (api)."""
         return (
             f"mysql+pymysql://{self.db_user}:{self.db_password}"
-            f"@mysql:3306?charset=utf8mb4"
+            f"@mysql:3306/api?charset=utf8mb4"
         )
 
     # ── Kafka ──────────────────────────────────────────────────────────────────
@@ -74,8 +74,7 @@ class Settings(BaseSettings):
         return v.strip()
 
     class Config:
-        env_file = "../.env"
-        env_file_encoding = "utf-8"
+        # env_file is intentionally not set — Docker Compose injects env vars directly
         extra = "allow"
 
 
