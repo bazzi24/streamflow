@@ -98,7 +98,11 @@ class ConnectionManager:
                     await self._disconnect_unsafe(ws)
 
     async def _disconnect_unsafe(self, ws: WebSocket) -> None:
-        """Disconnect without lock — caller must hold lock."""
+        """Disconnect without lock — caller must hold lock. Closes WebSocket connection."""
+        try:
+            await ws.close()
+        except Exception:
+            pass  # Ignore close errors - connection may already be closed
         self._all_connections.discard(ws)
         for sym in list(self._ws_symbols.pop(ws, [])):
             self._symbol_rooms[sym].discard(ws)
