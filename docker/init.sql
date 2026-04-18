@@ -6,18 +6,18 @@
 
 -- ============================================
 -- SECURITY: App user (non-root)
--- Run this after the databases are created.
--- In production, create a non-root user with minimal privileges.
+-- IMPORTANT: The password below MUST match DB_PASSWORD in .env.
+-- In production, replace both with a strong random password.
 -- ============================================
--- CREATE USER IF NOT EXISTS 'streamflow_app'@'%'
---   IDENTIFIED BY 'CHANGE_ME';
--- GRANT
---   SELECT, INSERT, UPDATE, DELETE
--- ON `data`.* TO 'streamflow_app'@'%';
--- GRANT
---   SELECT, INSERT, UPDATE, DELETE
--- ON `warehouse`.* TO 'streamflow_app'@'%';
--- FLUSH PRIVILEGES;
+CREATE USER IF NOT EXISTS 'streamflow_app'@'%'
+  IDENTIFIED BY 'change_strong_password';
+GRANT
+  SELECT, INSERT, UPDATE, DELETE
+ON `data`.* TO 'streamflow_app'@'%';
+GRANT
+  SELECT, INSERT, UPDATE, DELETE
+ON `warehouse`.* TO 'streamflow_app'@'%';
+FLUSH PRIVILEGES;
 
 -- ============================================
 -- DATABASE: data  (raw + reference + charts)
