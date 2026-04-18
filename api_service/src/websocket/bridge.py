@@ -237,59 +237,86 @@ async def kafka_bridge_loop() -> None:
     """
     Runs as a background asyncio task (started in FastAPI lifespan).
     Consumes all topics and forwards messages to the WS manager.
+    Includes automatic retry with exponential backoff on failures.
     """
-    consumer = AIOKafkaConsumer(
-        *TOPICS,
-        bootstrap_servers=settings.kafka_bootstrap_servers,
-        group_id="api_websocket_bridge",
-        value_deserializer=lambda m: json.loads(m.decode("utf-8")),
-        auto_offset_reset="latest",
-        enable_auto_commit=True,
-    )
+    consecutive_errors = 0
+    max_backoff_seconds = 30
 
-    try:
-        await consumer.start()
-        logger.info("Kafka bridge started, consuming topics: %s", TOPICS)
-    except Exception as e:
-        logger.error("Failed to start Kafka consumer: %s", e)
-        return
+    while True:
+        try:
+            consumer = AIOKafkaConsumer(
+                *TOPICS,
+                bootstrap_servers=settings.kafka_bootstrap_servers,
+                group_id="api_websocket_bridge",
+                value_deserializer=lambda m: json.loads(m.decode("utf-8")),
+                auto_offset_reset="latest",
+                enable_auto_commit=True,
+            )
 
-    # Run MySQL candlestick poller concurrently alongside Kafka consumer.
-    asyncio.create_task(_poll_candlesticks())
-    logger.info("Candlestick MySQL poller started (interval=%ds)", CANDLESTICK_POLL_INTERVAL_SEC)
-
-    try:
-        async for msg in consumer:
-            topic = msg.topic
             try:
-                raw = msg.value
-                ws_msg: dict | None = None
+                await consumer.start()
+                logger.info("Kafka bridge started, consuming topics: %s", TOPICS)
+                consecutive_errors = 0  # reset on successful start
+            except Exception as e:
+                logger.error("Failed to start Kafka consumer: %s", e)
+                # If we can't even start, retry after backoff
+                backoff = min(2 ** consecutive_errors, max_backoff_seconds)
+                await asyncio.sleep(backoff)
+                consecutive_errors += 1
+                continue
 
-                if isinstance(raw, dict) and "Content" in raw:
-                    content_str = raw.get("Content", "")
-                    if content_str:
-                        parser = PARSERS.get(topic)
-                        if parser:
-                            ws_msg = parser(content_str)
+            # Run MySQL candlestick poller concurrently alongside Kafka consumer.
+            poll_task = asyncio.create_task(_poll_candlesticks())
+            logger.info("Candlestick MySQL poller started (interval=%ds)", CANDLESTICK_POLL_INTERVAL_SEC)
 
-                if not ws_msg:
-                    continue
+            try:
+                async for msg in consumer:
+                    topic = msg.topic
+                    try:
+                        raw = msg.value
+                        ws_msg: dict | None = None
 
-                msg_type = ws_msg.get("type", "")
-                symbol = ws_msg.get("symbol", "")
+                        if isinstance(raw, dict) and "Content" in raw:
+                            content_str = raw.get("Content", "")
+                            if content_str:
+                                parser = PARSERS.get(topic)
+                                if parser:
+                                    ws_msg = parser(content_str)
 
-                if msg_type == "price_update" and symbol:
-                    # Invalidate the /stocks cache so next poll picks up the new tick immediately.
-                    await stock_cache.invalidate_all()
-                    # Only broadcast to clients watching this specific symbol.
-                    await ws_manager.broadcast_to_symbol(symbol, ws_msg)
-                elif msg_type == "orderbook_update" and symbol:
-                    await ws_manager.broadcast_to_symbol(symbol, ws_msg)
-                elif msg_type == "index_update":
-                    await ws_manager.broadcast_all(ws_msg)
+                        if not ws_msg:
+                            continue
+
+                        msg_type = ws_msg.get("type", "")
+                        symbol = ws_msg.get("symbol", "")
+
+                        if msg_type == "price_update" and symbol:
+                            # Invalidate the /stocks cache so next poll picks up the new tick immediately.
+                            await stock_cache.invalidate_all()
+                            # Only broadcast to clients watching this specific symbol.
+                            await ws_manager.broadcast_to_symbol(symbol, ws_msg)
+                        elif msg_type == "orderbook_update" and symbol:
+                            await ws_manager.broadcast_to_symbol(symbol, ws_msg)
+                        elif msg_type == "index_update":
+                            await ws_manager.broadcast_all(ws_msg)
+
+                    except Exception as e:
+                        logger.warning("Error processing Kafka message: %s", e)
 
             except Exception as e:
-                logger.warning("Error processing Kafka message: %s", e)
-    finally:
-        await consumer.stop()
-        logger.info("Kafka bridge stopped")
+                logger.error("Kafka consumer loop error: %s", e)
+                # Break out to outer retry loop
+                raise
+            finally:
+                await consumer.stop()
+                poll_task.cancel()
+                try:
+                    await poll_task
+                except asyncio.CancelledError:
+                    pass
+                logger.info("Kafka bridge stopped")
+
+        except Exception as e:
+            logger.error("Bridge crashed, restarting in 5s: %s", e)
+            consecutive_errors += 1
+            backoff = min(5, max_backoff_seconds)  # Fixed 5s for now, could be exponential
+            await asyncio.sleep(backoff)
