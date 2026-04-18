@@ -15,10 +15,11 @@ import time
 import signal
 import logging
 import threading
-from datetime import datetime, timedelta, time as dtime
+from datetime import datetime, timedelta, time as dtime, timezone
 from logging.handlers import RotatingFileHandler
 from kafka import KafkaConsumer
 import pymysql
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from candlestick import CandlestickConsumer
 
@@ -29,7 +30,7 @@ RESET_HOUR   = 9              # 9:00 AM UTC+7 — next-day archive clear
 
 def _now() -> datetime:
     """Return current Vietnam-time datetime."""
-    return datetime.utcnow() + timedelta(hours=7)
+    return datetime.now(timezone.utc) + timedelta(hours=7)
 
 def _vn_time_to_str(dt: datetime) -> str:
     """Format a Vietnam-time datetime as HH:MM:SS string."""
@@ -282,6 +283,49 @@ PARSERS = {
 }
 
 
+# ── Health Check HTTP Server ───────────────────────────────────────────────────
+
+class HealthHandler(BaseHTTPRequestHandler):
+    """Simple health check endpoint that returns thread status."""
+
+    def do_GET(self):
+        if self.path == "/health":
+            # Check all consumer threads
+            all_threads = threading.enumerate()
+            consumer_threads = [t for t in all_threads if t.name.startswith("Consumer-") or t.name in ("CandlestickConsumer", "TradeMatchArchive")]
+            healthy = all(t.is_alive() for t in consumer_threads)
+
+            status = 200 if healthy else 503
+            payload = {
+                "status": "ok" if healthy else "unhealthy",
+                "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+                "threads": [
+                    {"name": t.name, "alive": t.is_alive()}
+                    for t in consumer_threads
+                ]
+            }
+
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(payload, indent=2).encode())
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def log_message(self, format, *args):
+        # Suppress logging for health checks
+        pass
+
+
+def start_health_server(port: int = 8080):
+    """Start health check HTTP server in a daemon thread."""
+    server = HTTPServer(("0.0.0.0", port), HealthHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True, name="HealthServer")
+    thread.start()
+    return server
+
+
 # ── Consumer Thread ───────────────────────────────────────────────────────────
 
 class ConsumerThread(threading.Thread):
@@ -478,7 +522,7 @@ class TradeMatchArchiveThread(threading.Thread):
     def _do_daily_reset(self) -> None:
         """DELETE all rows for today's date (from the *previous* session)."""
         try:
-            yesterday = (datetime.utcnow() + timedelta(hours=7) - timedelta(days=1)).strftime("%Y-%m-%d")
+            yesterday = (datetime.now(timezone.utc) + timedelta(hours=7) - timedelta(days=1)).strftime("%Y-%m-%d")
             self._cursor.execute(
                 "DELETE FROM data.trade_match_archive WHERE trading_date = %s",
                 (yesterday,),
@@ -624,6 +668,11 @@ def main():
     signal.signal(signal.SIGINT,  shutdown)
     signal.signal(signal.SIGTERM, shutdown)
 
+    # ── Start health check server ─────────────────────────────────────────────
+    health_port = int(os.getenv("HEALTH_PORT", "8080"))
+    health_server = start_health_server(health_port)
+    print(f"Health check server started on port {health_port}")
+
     # ── CandlestickConsumer ────────────────────────────────────────────────
     candlestick = CandlestickConsumer()
     candlestick.start()
@@ -650,7 +699,12 @@ def main():
 
     try:
         while True:
-            time.sleep(60)
+            time.sleep(10)
+            # Check thread health - exit if any thread died unexpectedly
+            for t in threads:
+                if not t.is_alive():
+                    print(f"ERROR: Thread {t.name} died! Shutting down.")
+                    shutdown(None, None)
     except KeyboardInterrupt:
         shutdown(None, None)
 
