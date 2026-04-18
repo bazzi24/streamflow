@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- StreamFlow icon: simple chart -->
+  <rect x="10" y="60" width="10" height="30" fill="#3b82f6"/>
+  <rect x="25" y="45" width="10" height="45" fill="#10b981"/>
+  <rect x="40" y="55" width="10" height="35" fill="#f59e0b"/>
+  <rect x="55" y="30" width="10" height="60" fill="#ef4444"/>
+  <rect x="70" y="40" width="10" height="50" fill="#8b5cf6"/>
+</svg>

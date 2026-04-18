@@ -172,7 +172,7 @@ function MainChart({ symbol, interval, activeIndicators, chartType, priceScaleMo
         background: { type: ColorType.Solid, color: "#080c14" },
         textColor: "#4a5a6a",
         fontSize: 11,
-        fontFamily: "IBM Plex Mono, JetBrains Mono, monospace",
+        fontFamily: "Calibri, Candara, Segoe, 'Segoe UI', Optima, Arial, sans-serif",
       },
       grid: {
         vertLines: { color: "rgba(255,255,255,0.03)" },
@@ -244,7 +244,7 @@ function MainChart({ symbol, interval, activeIndicators, chartType, priceScaleMo
     const legendEl = document.createElement("div");
     legendEl.style.cssText =
       "position:absolute;top:4px;left:8px;z-index:10;" +
-      "font-size:11px;font-family:'IBM Plex Mono',monospace;" +
+      "font-size:11px;font-family:Calibri, Candara, Segoe, 'Segoe UI', Optima, Arial, sans-serif;" +
       "color:#8899aa;pointer-events:none;";
     wrapper.appendChild(legendEl);
     legendRef.current = legendEl;

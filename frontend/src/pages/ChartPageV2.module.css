@@ -48,7 +48,7 @@
   border-radius: 3px;
   box-shadow: 0 12px 60px rgba(0,0,0,0.85), 0 0 0 1px rgba(0,180,255,0.06);
   overflow: hidden;
-  font-family: "IBM Plex Mono", "JetBrains Mono", "Courier New", monospace;
+  font-family: Calibri, Candara, Segoe, "Segoe UI", Optima, Arial, sans-serif;
   font-size: 12px;
   color: #c8d0dc;
 }
@@ -87,7 +87,7 @@
   color: #5a6a80;
   cursor: pointer;
   transition: all 0.12s;
-  font-family: inherit;
+  font-family: Calibri, Candara, Segoe, "Segoe UI", Optima, Arial, sans-serif;
   white-space: nowrap;
   border-right: 1px solid rgba(255,255,255,0.05);
   height: 100%;
@@ -116,7 +116,7 @@
   border: none; background: transparent;
   color: #4a5a6a; border-radius: 3px;
   cursor: pointer; transition: all 0.12s;
-  font-size: 13px; font-family: inherit;
+  font-size: 13px; font-family: Calibri, Candara, Segoe, "Segoe UI", Optima, Arial, sans-serif;
 }
 .icon-btn:hover { background: rgba(255,255,255,0.06); color: #8899aa; }
 
@@ -129,7 +129,7 @@
   border-radius: 3px;
   cursor: pointer;
   font-size: 11px; font-weight: 500;
-  font-family: inherit;
+  font-family: Calibri, Candara, Segoe, "Segoe UI", Optima, Arial, sans-serif;
   transition: all 0.12s;
 }
 .order-btn:hover { background: rgba(0,230,118,0.15); }
@@ -140,7 +140,7 @@
   border: none; background: transparent;
   color: #3a4a5a; border-radius: 3px;
   cursor: pointer; transition: all 0.12s;
-  font-size: 14px; font-weight: 500; font-family: inherit;
+  font-size: 14px; font-weight: 500; font-family: Calibri, Candara, Segoe, "Segoe UI", Optima, Arial, sans-serif;
 }
 .close-btn:hover { background: rgba(255,61,87,0.12); color: #ff3d57; }
 
@@ -309,7 +309,7 @@
   border-radius: 3px;
   cursor: pointer; font-size: 11px;
   transition: all 0.12s;
-  font-family: inherit; font-weight: 500;
+  font-family: Calibri, Candara, Segoe, "Segoe UI", Optima, Arial, sans-serif; font-weight: 500;
 }
 .chart-control-btn:hover { background: rgba(255,255,255,0.05); color: #8899aa; }
 .chart-control-btn.active {
@@ -379,7 +379,7 @@
   padding: 2px 8px;
   border: none; background: transparent; border-radius: 2px;
   font-size: 10px; font-weight: 500; color: #4a5a6a;
-  cursor: pointer; transition: all 0.12s; font-family: inherit;
+  cursor: pointer; transition: all 0.12s; font-family: Calibri, Candara, Segoe, "Segoe UI", Optima, Arial, sans-serif;
 }
 .range-tab:hover { background: rgba(255,255,255,0.05); color: #8899aa; }
 .range-tab.active { background: #00d4ff; color: #000; }
@@ -389,7 +389,7 @@
   padding: 1px 6px;
   border: 1px solid rgba(255,255,255,0.06); background: transparent;
   border-radius: 2px; font-size: 10px; font-weight: 500; color: #4a5a6a;
-  cursor: pointer; transition: all 0.12s; font-family: inherit;
+  cursor: pointer; transition: all 0.12s; font-family: Calibri, Candara, Segoe, "Segoe UI", Optima, Arial, sans-serif;
 }
 .scale-btn:hover { background: rgba(255,255,255,0.05); }
 .scale-btn.active { background: rgba(0,212,255,0.08); color: #00d4ff; border-color: rgba(0,212,255,0.2); }
@@ -452,7 +452,7 @@
 .depth-table { width: 100%; border-collapse: collapse; font-size: 11px; table-layout: fixed; }
 .depth-table th {
   padding: 3px 4px; font-size: 9px; font-weight: 500;
-  color: #3a4a5a; text-transform: uppercase; font-family: "IBM Plex Mono", monospace;
+  color: #3a4a5a; text-transform: uppercase; font-family: Calibri, Candara, Segoe, "Segoe UI", Optima, Arial, sans-serif;
   border-bottom: 1px solid rgba(255,255,255,0.04); background: #0b0e17;
 }
 /* Column widths: KL_Mua(28%) | Giá_Mua(22%) | Giá_Bán(22%) | KL_Bán(28%) */
@@ -463,7 +463,7 @@
 .depth-table td {
   padding: 2px 4px; font-weight: 500;
   border-bottom: 1px solid rgba(255,255,255,0.03);
-  font-family: "IBM Plex Mono", monospace;
+  font-family: Calibri, Candara, Segoe, "Segoe UI", Optima, Arial, sans-serif;
   height: 22px; line-height: 22px;
 }
 .depth-table td:first-child { text-align: right; padding-right: 8px; }
@@ -525,20 +525,20 @@
 .trade-row.sell { background: rgba(255,61,87,0.03); }
 .trade-time {
   padding: 2px 6px; font-size: 9px; color: #3a4a5a;
-  text-align: left; font-family: "IBM Plex Mono", monospace;
+  text-align: left; font-family: Calibri, Candara, Segoe, "Segoe UI", Optima, Arial, sans-serif;
 }
 .trade-price {
   padding: 2px 5px; text-align: center; font-weight: 500;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: Calibri, Candara, Segoe, "Segoe UI", Optima, Arial, sans-serif;
 }
 .trade-vol {
   padding: 2px 5px; text-align: center; color: #4a5a6a;
-  font-family: "IBM Plex Mono", monospace; font-size: 10px;
+  font-family: Calibri, Candara, Segoe, "Segoe UI", Optima, Arial, sans-serif; font-size: 10px;
 }
-.trade-change { padding: 2px 5px; text-align: center; font-family: "IBM Plex Mono", monospace; }
+.trade-change { padding: 2px 5px; text-align: center; font-family: Calibri, Candara, Segoe, "Segoe UI", Optima, Arial, sans-serif; }
 .trade-side {
   padding: 2px 6px; text-align: right; font-size: 9px; font-weight: 500;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: Calibri, Candara, Segoe, "Segoe UI", Optima, Arial, sans-serif;
 }
 
 .trade-empty { padding: 12px; text-align: center; color: #3a4a5a; font-size: 11px; }
