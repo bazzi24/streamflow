@@ -199,7 +199,11 @@ class StockService:
 
     @staticmethod
     def _is_warrant(symbol: str) -> bool:
-        """Warrant: >3 chars, last 4 chars are digits, not an ETF prefix."""
+        """
+        Warrant detection: symbols ending with 4+ digits (e.g., VN30F2306).
+        Note: This is a heuristic pattern match. If SSI provides an instrument_type
+        field in future, that authoritative source should be used instead.
+        """
         return (
             len(symbol) > 3
             and symbol[-4:].isdigit()
@@ -521,14 +525,14 @@ class StockService:
                     high=_f(r.last_price),
                     low=_f(r.last_price),
                     close=_f(r.last_price),
-                    volume=_f(r.last_vol),
+                    volume=_i(r.last_vol),  # FIX: use _i() for integer volume, not _f()
                 )
             else:
                 b = bars[bucket]
                 b.high = max(b.high, _f(r.last_price))
                 b.low = min(b.low, _f(r.last_price))
                 b.close = _f(r.last_price)
-                b.volume += _f(r.last_vol)
+                b.volume += _i(r.last_vol)  # FIX: use _i() for integer volume, not _f()
 
         return sorted(bars.values(), key=lambda x: x.timestamp)
 
