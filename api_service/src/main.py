@@ -28,38 +28,34 @@ async def lifespan(app: FastAPI):
     global bridge_task
     from .websocket.bridge import kafka_bridge_loop
 
-    # Ensure api database + tables exist (idempotent — safe to re-run)
-    from .database import api_engine
-    from sqlalchemy import text
-    with api_engine.connect() as conn:
-        conn.execute(text("CREATE DATABASE IF NOT EXISTS api CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"))
-        conn.execute(text("USE api"))
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS `user` (
-                id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-                email VARCHAR(255) NOT NULL UNIQUE,
-                username VARCHAR(100) NOT NULL,
-                password_hash VARCHAR(255) NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                is_active BOOLEAN DEFAULT TRUE,
-                INDEX idx_email (email)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-        """))
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS watchlist (
-                id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-                user_id BIGINT NOT NULL,
-                symbol VARCHAR(20) NOT NULL,
-                position INT DEFAULT 0,
-                added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE KEY unique_user_symbol (user_id, symbol),
-                FOREIGN KEY (user_id) REFERENCES `user`(id) ON DELETE CASCADE,
-                INDEX idx_user_id (user_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-        """))
-        conn.commit()
-    logger.info("API database + tables ensured.")
+    # Run database migrations using Alembic
+    try:
+        from alembic.config import Config
+        from alembic import command
+        import os
+        from sqlalchemy import create_engine, text
+
+        # First, ensure the 'api' database exists (Alembic only creates tables)
+        server_url = settings.api_db_url.rsplit("/", 1)[0]  # remove database part (api)
+        engine = create_engine(server_url)
+        with engine.connect() as conn:
+            conn.execute(text("CREATE DATABASE IF NOT EXISTS api CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"))
+            conn.commit()
+        engine.dispose()
+
+        # Now run Alembic migrations
+        project_root = os.path.dirname(os.path.dirname(__file__))
+        alembic_ini = os.path.join(project_root, "alembic.ini")
+        alembic_cfg = Config(alembic_ini)
+        # Override sqlalchemy.url from environment
+        alembic_cfg.set_main_option("sqlalchemy.url", settings.api_db_url)
+
+        logger.info("Running database migrations...")
+        command.upgrade(alembic_cfg, "head")
+        logger.info("Migrations completed successfully.")
+    except Exception as e:
+        logger.error("Migration failed: %s", e)
+        raise
 
     logger.info("Starting Kafka bridge...")
     bridge_task = asyncio.create_task(kafka_bridge_loop())
