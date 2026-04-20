@@ -3,7 +3,7 @@ services:
   # INFRASTRUCTURE
   # ============================================================
   kafka:
-    image: apache/kafka:3.7.0
+    image: apache/kafka:4.2.0
     container_name: kafka
     ports:
       - "${EXPOSE_KAFKA_PORT:-9092}:9092"
@@ -37,7 +37,7 @@ services:
       retries: 10
 
   kafka-ui:
-    image: provectuslabs/kafka-ui:0.7.2
+    image: provectuslabs/kafka-ui:v0.7.2
     container_name: kafka-ui
     ports:
       - "${EXPOSE_KAFKA_UI_PORT:-8080}:8080"
