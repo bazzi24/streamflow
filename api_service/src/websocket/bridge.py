@@ -7,6 +7,39 @@ from aiokafka import AIOKafkaConsumer
 import pymysql
 from . import ws_manager as _ws_mod
 ws_manager = _ws_mod
+from typing import TypedDict, Callable
+
+class TradeMessage(TypedDict):
+    """Parsed trade message from market_data_trade topic."""
+    type: str
+    symbol: str
+    last_price: float
+    change: float
+    ratio_change: float
+    volume: int
+    value: float
+    time: str
+
+class QuoteMessage(TypedDict):
+    """Parsed quote message from market_data_quote topic."""
+    type: str
+    symbol: str
+    bids: list[dict[str, float | int]]
+    asks: list[dict[str, float | int]]
+    time: str
+
+class IndexMessage(TypedDict):
+    """Parsed index message from index_data topic."""
+    type: str
+    index_id: str
+    index_value: float
+    change: float
+    ratio_change: float
+    advances: int
+    declines: int
+    time: str
+
+WebSocketMessage = TradeMessage | QuoteMessage | IndexMessage
 from ..services.stock_cache import stock_cache
 from ..config import get_settings
 
@@ -28,6 +61,7 @@ CANDLESTICK_POLL_INTERVAL_SEC = 10  # how often to poll MySQL for new 1m bars
 _streaming_url = urlparse(settings.streaming_db_url.replace("mysql+pymysql://", "http://"))
 _STREAMING_HOST = _streaming_url.hostname or "mysql"
 _STREAMING_PORT = _streaming_url.port or 3306
+_STREAMING_DB = _streaming_url.path.lstrip("/")  # Extract DB name from URL
 
 
 def _safe_float(val) -> float:
@@ -44,7 +78,7 @@ def _safe_int(val) -> int:
         return 0
 
 
-def _parse_trade(content_str: str) -> dict | None:
+def _parse_trade(content_str: str) -> TradeMessage | None:
     """Parse a trade message from market_data_trade topic."""
     try:
         data = json.loads(content_str)
@@ -68,7 +102,7 @@ def _parse_trade(content_str: str) -> dict | None:
         return None
 
 
-def _parse_quote(content_str: str) -> dict | None:
+def _parse_quote(content_str: str) -> QuoteMessage | None:
     """Parse a quote message from market_data_quote topic."""
     try:
         data = json.loads(content_str)
@@ -98,7 +132,7 @@ def _parse_quote(content_str: str) -> dict | None:
         return None
 
 
-def _parse_index(content_str: str) -> dict | None:
+def _parse_index(content_str: str) -> IndexMessage | None:
     """Parse an index message from index_data topic."""
     try:
         data = json.loads(content_str)
@@ -120,7 +154,7 @@ def _parse_index(content_str: str) -> dict | None:
         return None
 
 
-PARSERS: dict[str, callable] = {
+PARSERS: dict[str, Callable[[str], WebSocketMessage | None]] = {
     "market_data_trade": _parse_trade,
     "market_data_quote": _parse_quote,
     "index_data": _parse_index,
@@ -136,7 +170,7 @@ def _connect_streaming_db():
         port=_STREAMING_PORT,
         user=settings.db_user,
         password=settings.db_password,
-        database="data",
+        database=_STREAMING_DB,
         charset="utf8mb4",
         autocommit=True,
     )
@@ -274,7 +308,7 @@ async def kafka_bridge_loop() -> None:
                     topic = msg.topic
                     try:
                         raw = msg.value
-                        ws_msg: dict | None = None
+                        ws_msg: WebSocketMessage | None = None
 
                         if isinstance(raw, dict) and "Content" in raw:
                             content_str = raw.get("Content", "")
