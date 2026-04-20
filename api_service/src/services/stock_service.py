@@ -5,7 +5,6 @@ from ..models import (
     SymbolDim, StockTradeFact, StockOrderBookFact, MarketIndexFact,
     Candlestick1M, Candlestick1D, TradeMatchArchive,
 )
-from ..database import get_streaming_db, get_db
 from ..schemas.stock import (
     StockQuote, OrderBook, OrderBookLevel, OHLCVBar, SymbolMeta,
     StockSummary, IndexOverview, MarketOverviewResponse, BidAskLevel,
@@ -19,6 +18,9 @@ logger = logging.getLogger(__name__)
 
 # Vietnam is UTC+7 — Naive datetime from MySQL is stored in Asia/Ho_Chi_Minh time.
 VIETNAM_TZ = timezone(timedelta(hours=7))
+
+# ETF prefix list used in warrant detection (must stay in sync with frontend)
+_ETF_PREFIXES: frozenset[str] = frozenset({"VF", "E1", "SSIAM", "VOF", "VFA", "VCA"})
 
 def _to_ms(dt) -> int:
     """
@@ -85,14 +87,15 @@ class StockService:
     Falls back to DW tables (fact.*, dim.*) if streaming is empty.
     """
 
-    def __init__(self, db: Session):
-        self.db = db
+    def __init__(self, streaming_db: Session, warehouse_db: Session):
+        self.streaming_db = streaming_db
+        self.warehouse_db = warehouse_db
 
     # ── Symbols ──────────────────────────────────────────────────────────
 
     def list_symbols(self) -> list[SymbolMeta]:
         # Try DW first
-        rows = self.db.query(SymbolDim).filter(
+        rows = self.warehouse_db.query(SymbolDim).filter(
             SymbolDim.symbol.isnot(None)
         ).all()
         if rows:
@@ -101,7 +104,7 @@ class StockService:
                 for r in rows
             ]
         # Fall back to streaming distinct symbols
-        rows = self.db.query(
+        rows = self.streaming_db.query(
             StreamingDataTrade.symbol,
             func.max(StreamingDataTrade.trading_date).label("latest"),
         ).group_by(StreamingDataTrade.symbol).all()
@@ -111,7 +114,7 @@ class StockService:
         ]
 
     def get_symbol_meta(self, symbol: str) -> SymbolMeta | None:
-        row = self.db.query(SymbolDim).filter(
+        row = self.warehouse_db.query(SymbolDim).filter(
             SymbolDim.symbol == symbol
         ).first()
         if row:
@@ -121,7 +124,7 @@ class StockService:
                 sector=row.sector,
             )
         # Fall back to streaming
-        row = self.db.query(StreamingDataTrade).filter(
+        row = self.streaming_db.query(StreamingDataTrade).filter(
             StreamingDataTrade.symbol == symbol
         ).first()
         if row:
@@ -133,7 +136,7 @@ class StockService:
     def get_quote(self, symbol: str) -> StockQuote | None:
         # Try streaming first (most up-to-date)
         row = (
-            self.db.query(StreamingDataTrade)
+            self.streaming_db.query(StreamingDataTrade)
             .filter(StreamingDataTrade.symbol == symbol)
             .order_by(desc(StreamingDataTrade.id))
             .first()
@@ -154,20 +157,20 @@ class StockService:
                 time=row.time or "",
             )
         # Fall back to DW
-        sym = self.db.query(SymbolDim).filter(
+        sym = self.warehouse_db.query(SymbolDim).filter(
             SymbolDim.symbol == symbol
         ).first()
         if not sym:
             return None
         max_date_key = (
-            self.db.query(func.max(StockTradeFact.tradingdate_key))
+            self.warehouse_db.query(func.max(StockTradeFact.tradingdate_key))
             .filter(StockTradeFact.symbol_key == sym.symbol_key)
             .scalar()
         )
         if not max_date_key:
             return None
         row = (
-            self.db.query(StockTradeFact)
+            self.warehouse_db.query(StockTradeFact)
             .filter(
                 StockTradeFact.symbol_key == sym.symbol_key,
                 StockTradeFact.tradingdate_key == max_date_key,
@@ -194,9 +197,6 @@ class StockService:
 
     # ── All symbols latest prices ────────────────────────────────────────
 
-    # ETF prefix list used in warrant detection (must stay in sync with frontend)
-    _ETF_PREFIXES = {"VF", "E1", "SSIAM", "VOF", "VFA", "VCA"}
-
     @staticmethod
     def _is_warrant(symbol: str) -> bool:
         """
@@ -207,7 +207,7 @@ class StockService:
         return (
             len(symbol) > 3
             and symbol[-4:].isdigit()
-            and symbol[:2] not in StockService._ETF_PREFIXES
+            and symbol[:2] not in _ETF_PREFIXES
         )
 
     def list_latest_quotes(
@@ -229,12 +229,12 @@ class StockService:
         # ── VN30 / HNX30: resolve index constituents ──────────────────────────
         index_symbols: set[str] | None = None
         if exchange in ("VN30", "HNX30"):
-            latest_date = self.db.query(
+            latest_date = self.streaming_db.query(
                 func.max(DataIndexComponent.effective_date)
             ).filter(DataIndexComponent.index_id == exchange).scalar()
             if latest_date:
                 rows = (
-                    self.db.query(DataIndexComponent.symbol)
+                    self.streaming_db.query(DataIndexComponent.symbol)
                     .filter(
                         DataIndexComponent.index_id == exchange,
                         DataIndexComponent.effective_date == latest_date,
@@ -249,7 +249,7 @@ class StockService:
         from sqlalchemy.orm import aliased
 
         ranked = (
-            self.db.query(
+            self.streaming_db.query(
                 StreamingDataTrade,
                 func.row_number()
                 .over(
@@ -268,13 +268,13 @@ class StockService:
         from sqlalchemy.orm import aliased as _aliased
 
         latest_quote_id = (
-            self.db.query(func.max(StreamingDataQuote.id))
+            self.streaming_db.query(func.max(StreamingDataQuote.id))
             .filter(StreamingDataQuote.symbol_id == ranked_trade.symbol)
             .correlate(ranked)
             .scalar_subquery()
         )
         latest_fr_id = (
-            self.db.query(func.max(StreamingForeignRoom.id))
+            self.streaming_db.query(func.max(StreamingForeignRoom.id))
             .filter(StreamingForeignRoom.symbol == ranked_trade.symbol)
             .correlate(ranked)
             .scalar_subquery()
@@ -285,7 +285,7 @@ class StockService:
         FRAlias    = _aliased(StreamingForeignRoom)
 
         base = (
-            self.db.query(ranked_trade, QuoteAlias, FRAlias)
+            self.streaming_db.query(ranked_trade, QuoteAlias, FRAlias)
             .select_from(ranked_trade)
             .filter(ranked.c.rn == 1)
             .outerjoin(QuoteAlias, QuoteAlias.id == latest_quote_id)
@@ -308,7 +308,7 @@ class StockService:
 
             # Warrant detection
             is_warrant = self._is_warrant(symbol)
-            is_etf = symbol[:2] in self._ETF_PREFIXES or symbol[:5] in self._ETF_PREFIXES
+            is_etf = symbol[:2] in _ETF_PREFIXES or symbol[:5] in _ETF_PREFIXES
 
             # Segment filter: exclude warrants from regular exchange tabs
             if segment == "WARRANT":
@@ -396,7 +396,7 @@ class StockService:
 
     def get_orderbook(self, symbol: str) -> OrderBook | None:
         row = (
-            self.db.query(StreamingDataQuote)
+            self.streaming_db.query(StreamingDataQuote)
             .filter(StreamingDataQuote.symbol_id == symbol)
             .order_by(desc(StreamingDataQuote.id))
             .first()
@@ -434,7 +434,7 @@ class StockService:
         """
         # ── 1m candles from candlestick_1m (primary path) ───────────────────
         rows = (
-            self.db.query(Candlestick1M)
+            self.streaming_db.query(Candlestick1M)
             .filter(Candlestick1M.symbol == symbol)
             .order_by(desc(Candlestick1M.time_start))
             .limit(limit)
@@ -494,7 +494,7 @@ class StockService:
         # Order DESC so we get the LATEST `limit` ticks, then reverse for
         # chronological bucketing — fixes the original ASC-ordering bug.
         rows = (
-            self.db.query(StreamingDataTrade)
+            self.streaming_db.query(StreamingDataTrade)
             .filter(StreamingDataTrade.symbol == symbol)
             .order_by(desc(StreamingDataTrade.id))
             .limit(limit)
@@ -540,13 +540,11 @@ class StockService:
         """Daily OHLCV — reads pre-computed daily candles from candlestick_1d.
         Falls back to streaming.data_trade GROUP BY if candlestick_1d is empty.
         """
-        from datetime import date as date_cls
-
-        _EPOCH_ORD = date_cls(1970, 1, 1).toordinal()  # pre-compute once
+        from datetime import date as date_cls, datetime, time
 
         # ── candlestick_1d (primary path) ───────────────────────────────────
         rows = (
-            self.db.query(Candlestick1D)
+            self.streaming_db.query(Candlestick1D)
             .filter(Candlestick1D.symbol == symbol)
             .order_by(desc(Candlestick1D.trading_date))
             .limit(days)
@@ -555,26 +553,26 @@ class StockService:
         if rows:
             # Return in chronological order (oldest first).
             rows = list(reversed(rows))
-            # MySQL DATE is midnight UTC — market opens 09:00 Vietnam = 02:00 UTC (+2h)
-            _OPEN_OFFSET_MS = 2 * 3600 * 1000
-            return [
-                OHLCVBar(
-                    # trading_date.toordinal() - EPOCH_ORD = days since 1970-01-01 in seconds → ms
-                    timestamp=(r.trading_date.toordinal() - _EPOCH_ORD) * 86400 * 1000 + _OPEN_OFFSET_MS,
+            # Use explicit datetime: trading_date + 09:00 Vietnam market open
+            bars = []
+            for r in rows:
+                dt_vietnam = datetime.combine(r.trading_date, time(hour=9)).replace(tzinfo=VIETNAM_TZ)
+                timestamp = int(dt_vietnam.timestamp() * 1000)
+                bars.append(OHLCVBar(
+                    timestamp=timestamp,
                     open=_f(r.open),
                     high=_f(r.high),
                     low=_f(r.low),
                     close=_f(r.close),
                     volume=_i(r.volume),
-                )
-                for r in rows
-            ]
+                ))
+            return bars
 
         # ── Fallback: streaming.data_trade GROUP BY (corrected ordering) ────
         # Order DESC + limit so we get the LATEST `days` trading dates,
         # then reverse to chronological order — fixes original ASC bug.
         rows = (
-            self.db.query(
+            self.streaming_db.query(
                 StreamingDataTrade.trading_date,
                 func.max(StreamingDataTrade.last_price).label("high"),
                 func.min(StreamingDataTrade.last_price).label("low"),
@@ -594,11 +592,16 @@ class StockService:
         rows = list(reversed(rows))
         bars = []
         for r in rows:
-            open_row = self.db.query(StreamingDataTrade).filter(
+            open_row = self.streaming_db.query(StreamingDataTrade).filter(
                 StreamingDataTrade.id == _i(r.min_id)
             ).first()
             open_price = _f(open_row.last_price) if open_row else _f(r.high)
-            ts = int(r.trading_date.toordinal() - _EPOCH_ORD) * 86400 * 1000 if r.trading_date else 0
+            # Use explicit datetime for timestamp
+            if r.trading_date:
+                dt_vietnam = datetime.combine(r.trading_date, time(hour=9)).replace(tzinfo=VIETNAM_TZ)
+                ts = int(dt_vietnam.timestamp() * 1000)
+            else:
+                ts = 0
             bars.append(
                 OHLCVBar(
                     timestamp=ts,
@@ -622,7 +625,7 @@ class StockService:
 
         # Get indices from latest index_data rows
         idx_rows = (
-            self.db.query(
+            self.streaming_db.query(
                 StreamingIndexData.index_id,
                 StreamingIndexData.index_name,
                 func.max(StreamingIndexData.id).label("max_id"),
@@ -631,7 +634,7 @@ class StockService:
             .subquery()
         )
         latest_indices = (
-            self.db.query(StreamingIndexData)
+            self.streaming_db.query(StreamingIndexData)
             .join(idx_rows, StreamingIndexData.id == idx_rows.c.max_id)
             .all()
         )
@@ -687,7 +690,7 @@ class StockService:
         fall back to the live WebSocket tape automatically.
         """
         query = (
-            self.db.query(TradeMatchArchive)
+            self.streaming_db.query(TradeMatchArchive)
             .filter(TradeMatchArchive.symbol == symbol)
         )
         if date:
