@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from ...database import get_streaming_db
+from ...database import get_streaming_db, get_db
 from ...services.stock_service import StockService
 from ...services.stock_cache import stock_cache
 from ...schemas.stock import (
@@ -12,8 +12,11 @@ from typing import Annotated
 router = APIRouter(prefix="/stocks", tags=["stocks"])
 
 
-def get_stock_service(db: Session = Depends(get_streaming_db)) -> StockService:
-    return StockService(db)
+def get_stock_service(
+    streaming_db: Session = Depends(get_streaming_db),
+    warehouse_db: Session = Depends(get_db)
+) -> StockService:
+    return StockService(streaming_db, warehouse_db)
 
 
 # ── Cache helpers ────────────────────────────────────────────────────────────
