@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     app_name: str = "StreamFlow API"
     debug: bool = False
 
+    # ── Rate Limiting ─────────────────────────────────────────────────────────
+    rate_limit_enabled: bool = True
+    rate_limit_requests: int = 100  # requests per window
+    rate_limit_window_seconds: int = 60
+
     # ── CORS — comma-separated origins — REQUIRED, no default ────────────────────
     # Production must set explicitly: http://localhost:3000,https://app.example.com
     cors_origins: str
