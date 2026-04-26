@@ -1,7 +1,7 @@
 from pydantic_settings import BaseSettings
 from pydantic import field_validator
 from functools import lru_cache
-import re
+from urllib.parse import quote, urlsplit, urlunsplit
 
 
 class Settings(BaseSettings):
@@ -85,7 +85,7 @@ class Settings(BaseSettings):
 
 def _strip_jdbc_prefix(url: str) -> str:
     """Strip 'jdbc:mysql://' so SQLAlchemy can parse the URL."""
-    return re.sub(r"^jdbc:", "", url)
+    return url[5:] if url.startswith("jdbc:") else url
 
 
 def _build_sqlalchemy_url(jdbc_url: str, user: str, password: str) -> str:
@@ -98,18 +98,28 @@ def _build_sqlalchemy_url(jdbc_url: str, user: str, password: str) -> str:
     The JDBC URLs in .env have no embedded credentials (docker service name is
     the host).  This function replaces any existing credentials AND adds new ones.
     """
-    def replacer(m: re.Match) -> str:
-        return f"mysql+pymysql://{user}:{password}@{m.group(1)}"
+    normalized = _strip_jdbc_prefix(jdbc_url)
+    parsed = urlsplit(normalized)
 
-    # Matches: jdbc:mysql:// [creds@] host[:port] /path[?query]
-    #   group(1): [creds@]host[:port]
-    result = re.sub(
-        r"jdbc:mysql://([^/]+)(/.*)",
-        replacer,
-        jdbc_url,
-        count=1,
+    if parsed.scheme != "mysql":
+        raise ValueError("Expected JDBC MySQL URL, e.g. jdbc:mysql://host:3306/db?query")
+
+    # Remove any existing credentials from netloc, keep host:port intact.
+    host_port = parsed.netloc.rsplit("@", 1)[-1]
+
+    encoded_user = quote(user, safe="")
+    encoded_password = quote(password, safe="")
+    auth_netloc = f"{encoded_user}:{encoded_password}@{host_port}"
+
+    return urlunsplit(
+        (
+            "mysql+pymysql",
+            auth_netloc,
+            parsed.path,
+            parsed.query,
+            parsed.fragment,
+        )
     )
-    return result
 
 
 @lru_cache
