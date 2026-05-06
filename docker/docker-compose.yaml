@@ -8,7 +8,7 @@ services:
     ports:
       - "${EXPOSE_KAFKA_PORT:-9092}:9092"
     env_file:
-      - ../.env
+      - .env
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
@@ -52,13 +52,12 @@ services:
     restart: unless-stopped
 
   mysql:
-    image: mysql:8.0.39
+    image: mysql:9.6
     container_name: mysql
     env_file:
-      - ../.env
+      - .env
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-stream_flow}
-      MYSQL_ROOT_HOST: "%"
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
     command:
       --max_connections=1000
       --character-set-server=utf8mb4
@@ -67,7 +66,7 @@ services:
       --tls_version="TLSv1.2,TLSv1.3"
       --binlog_expire_logs_seconds=604800
     ports:
-      - "${EXPOSE_MYSQL_PORT:-3306}:3306"
+      - "${EXPOSE_MYSQL_PORT}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -127,7 +126,7 @@ services:
       dockerfile: Dockerfile
     container_name: producer
     env_file:
-      - ../.env
+      - .env
     command: ["kafkaStream/producer_unified.py"]
     volumes:
       - ../logs:/streamflow/logs
@@ -147,7 +146,7 @@ services:
       dockerfile: Dockerfile
     container_name: consumer
     env_file:
-      - ../.env
+      - .env
     command: ["consumer/consumer_unified.py"]
     ports:
       - "${EXPOSE_CONSUMER_HEALTH_PORT:-8081}:8080"  # Health check endpoint (default 8081)
@@ -178,7 +177,7 @@ services:
     ports:
       - "${EXPOSE_API_PORT:-8000}:8000"
     env_file:
-      - ../.env
+      - .env
     environment:
       # All secrets come from ../.env (loaded by env_file above).
       # Do NOT add DB_USER, DB_PASSWORD, or SECRET_KEY here —
@@ -225,7 +224,7 @@ services:
     environment:
       MYSQL_HOST: mysql
       MYSQL_PORT: "3306"
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-stream_flow}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
     depends_on:
       mysql:
         condition: service_healthy

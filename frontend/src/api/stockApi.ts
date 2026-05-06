@@ -82,6 +82,13 @@ export interface StockSummary {
   is_etf?: boolean;
 }
 
+export interface PaginatedStocksResponse {
+  items: StockSummary[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface IndexOverview {
   index_id: string;
   index_name: string;
@@ -142,8 +149,10 @@ export const authApi = {
 // ── Stocks ────────────────────────────────────────────────────────────────
 
 export const stockApi = {
-  listStocks: (exchange?: string, segment?: string) =>
-    client.get<StockSummary[]>("/stocks", { params: { exchange: exchange ?? undefined, segment: segment ?? undefined } }),
+  listStocks: (exchange?: string, segment?: string, limit = 100, offset = 0) =>
+    client.get<PaginatedStocksResponse>("/stocks", {
+      params: { exchange: exchange ?? undefined, segment: segment ?? undefined, limit, offset }
+    }),
   getSymbol: (symbol: string) => client.get<SymbolMeta>(`/stocks/${symbol}`),
   getQuote: (symbol: string) => client.get<StockQuote>(`/stocks/${symbol}/quote`),
   getOrderBook: (symbol: string) => client.get<OrderBook>(`/stocks/${symbol}/orderbook`),

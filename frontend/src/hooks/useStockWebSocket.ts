@@ -32,6 +32,7 @@ export function useStockWebSocket({
   const wsRef = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectAttempts = useRef(0);
   const onMessageRef = useRef(onMessage);
   onMessageRef.current = onMessage;
 
@@ -52,6 +53,7 @@ export function useStockWebSocket({
 
     ws.onopen = () => {
       setIsConnected(true);
+      reconnectAttempts.current = 0; // reset on successful connect
       onConnect?.();
     };
 
@@ -71,12 +73,14 @@ export function useStockWebSocket({
     ws.onclose = () => {
       setIsConnected(false);
       onDisconnect?.();
-      // Auto-reconnect after 3 seconds
+      // Exponential backoff reconnection: 1s, 2s, 4s, 8s, max 30s
       if (!reconnectTimer.current) {
+        const delay = Math.min(1000 * 2 ** reconnectAttempts.current, 30000);
+        reconnectAttempts.current += 1;
         reconnectTimer.current = setTimeout(() => {
           reconnectTimer.current = null;
           connect();
-        }, 3000);
+        }, delay);
       }
     };
   }, [symbol, market, token, onConnect, onDisconnect]);

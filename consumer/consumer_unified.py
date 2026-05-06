@@ -167,11 +167,14 @@ def setup_logger(name: str) -> logging.Logger:
 
 
 def connect_db():
+    password = os.getenv("DB_PASSWORD")
+    if password is None:
+        raise ValueError("DB_PASSWORD environment variable is required")
     return pymysql.connect(
         host=os.getenv("MYSQL_HOST", "mysql"),
         port=int(os.getenv("MYSQL_PORT", 3306)),
         user=os.getenv("DB_USER", "root"),
-        password=os.getenv("DB_PASSWORD", "stream_flow"),
+        password=password,
         database="data",
         charset="utf8mb4",
         autocommit=False,
@@ -373,54 +376,73 @@ class ConsumerThread(threading.Thread):
             pass
         self._connect_db()
 
+    def _cleanup(self):
+        """Ensure all resources are closed."""
+        try:
+            if self._cursor:
+                self._cursor.close()
+        except Exception:
+            pass
+        try:
+            if self._conn:
+                self._conn.close()
+        except Exception:
+            pass
+        try:
+            if self._consumer:
+                self._consumer.close()
+        except Exception:
+            pass
+
     def run(self):
         logger = setup_logger(f"consumer-{self.topic}")
         logger.info("Starting consumer thread for topic: %s", self.topic)
 
-        self._connect_db()
-        self._connect_kafka()
+        try:
+            self._connect_db()
+            self._connect_kafka()
 
-        batch = []
-        parse_fn = PARSERS.get(self.topic)
+            batch = []
+            parse_fn = PARSERS.get(self.topic)
 
-        while not self._stop_event.is_set():
-            try:
-                raw_msgs = self._consumer.poll(timeout_ms=1000, max_records=self.batch_size)
-                if not raw_msgs:
-                    if batch:
+            while not self._stop_event.is_set():
+                try:
+                    raw_msgs = self._consumer.poll(timeout_ms=1000, max_records=self.batch_size)
+                    if not raw_msgs:
+                        if batch:
+                            self._flush(batch, logger)
+                            batch.clear()
+                        continue
+
+                    for tp, messages in raw_msgs.items():
+                        for msg in messages:
+                            try:
+                                content_str = msg.value["Content"]
+                                record = parse_fn(content_str) if parse_fn else None
+                                if record:
+                                    batch.append(record)
+                            except Exception as e:
+                                logger.error("Parse error: %s", e)
+
+                    if len(batch) >= self.batch_size or batch:
                         self._flush(batch, logger)
                         batch.clear()
-                    continue
 
-                for tp, messages in raw_msgs.items():
-                    for msg in messages:
-                        try:
-                            content_str = msg.value["Content"]
-                            record = parse_fn(content_str) if parse_fn else None
-                            if record:
-                                batch.append(record)
-                        except Exception as e:
-                            logger.error("Parse error: %s", e)
+                except Exception as e:
+                    logger.exception("Poll error")
+                    time.sleep(2)
+                    try:
+                        self._reconnect_db()
+                    except Exception as reconnect_error:
+                        logger.error("Reconnect failed: %s", reconnect_error)
 
-                if len(batch) >= self.batch_size or batch:
-                    self._flush(batch, logger)
-                    batch.clear()
+            # Final flush before shutdown
+            if batch:
+                self._flush(batch, logger)
 
-            except Exception as e:
-                logger.error("Poll error: %s", e)
-                time.sleep(2)
-                try:
-                    self._reconnect_db()
-                except Exception:
-                    pass
-
-        # Final flush
-        if batch:
-            self._flush(batch, logger)
-        self._consumer.close()
-        self._cursor.close()
-        self._conn.close()
-        logger.info("Consumer thread for %s stopped.", self.topic)
+        finally:
+            self._cleanup()
+            logger.info("Consumer thread for %s stopped.", self.topic)
 
     def _flush(self, batch: list, logger: logging.Logger):
         try:
@@ -590,61 +612,80 @@ class TradeMatchArchiveThread(threading.Thread):
 
     # ── Main loop ────────────────────────────────────────────────────────────
 
+    def _cleanup(self):
+        """Ensure all resources are closed."""
+        try:
+            if self._cursor:
+                self._cursor.close()
+        except Exception:
+            pass
+        try:
+            if self._conn:
+                self._conn.close()
+        except Exception:
+            pass
+        try:
+            if self._consumer:
+                self._consumer.close()
+        except Exception:
+            pass
+
     def run(self) -> None:
         self.logger = setup_logger("trade-match-archive")
         self.logger.info("TradeMatchArchive thread starting...")
 
-        self._connect_db()
-        self._connect_kafka()
+        try:
+            self._connect_db()
+            self._connect_kafka()
 
-        while not self._stop.is_set():
-            try:
-                now_vn = _now()
-                self._refresh_today(now_vn)
-
-                # ── Idle outside market hours ────────────────────────────────
-                if not _is_trading_hours(now_vn):
-                    # Still flush periodically to avoid holding a large batch
-                    if self._batch and (time.time() - self._last_flush) >= self.FLUSH_INTERVAL_S:
-                        self._flush()
-                    time.sleep(5)
-                    continue
-
-                # ── At 3:30 PM: trigger closing flush ───────────────────────
-                t = now_vn.time()
-                if (t.hour == 15 and t.minute == 30 and not self._closing):
-                    self.logger.info("Market close (3:30 PM) — final flush of trade_match_archive.")
-                    self._flush()
-                    self._closing = True
-
-                # ── Poll Kafka ───────────────────────────────────────────────
-                raw_msgs = self._consumer.poll(timeout_ms=2000, max_records=self.BATCH_SIZE)
-                for tp, messages in raw_msgs.items():
-                    for msg in messages:
-                        self._process_msg(msg)
-
-                # ── Flush on batch size ────────────────────────────────────
-                if len(self._batch) >= self.BATCH_SIZE:
-                    self._flush()
-                # ── Flush on timer ─────────────────────────────────────────
-                elif self._batch and (time.time() - self._last_flush) >= self.FLUSH_INTERVAL_S:
-                    self._flush()
-
-            except Exception as e:
-                self.logger.error("Archive loop error: %s", e)
-                time.sleep(5)
+            while not self._stop.is_set():
                 try:
-                    self._reconnect_db()
-                except Exception:
-                    pass
+                    now_vn = _now()
+                    self._refresh_today(now_vn)
 
-        # ── Shutdown: final flush ──────────────────────────────────────────
-        self.logger.info("TradeMatchArchive shutting down — final flush.")
-        self._flush()
-        self._consumer.close()
-        self._cursor.close()
-        self._conn.close()
-        self.logger.info("TradeMatchArchive stopped.")
+                    # ── Idle outside market hours ────────────────────────────────
+                    if not _is_trading_hours(now_vn):
+                        # Still flush periodically to avoid holding a large batch
+                        if self._batch and (time.time() - self._last_flush) >= self.FLUSH_INTERVAL_S:
+                            self._flush()
+                        time.sleep(5)
+                        continue
+
+                    # ── At 3:30 PM: trigger closing flush ───────────────────────
+                    t = now_vn.time()
+                    if (t.hour == 15 and t.minute == 30 and not self._closing):
+                        self.logger.info("Market close (3:30 PM) — final flush of trade_match_archive.")
+                        self._flush()
+                        self._closing = True
+
+                    # ── Poll Kafka ───────────────────────────────────────────────
+                    raw_msgs = self._consumer.poll(timeout_ms=2000, max_records=self.BATCH_SIZE)
+                    for tp, messages in raw_msgs.items():
+                        for msg in messages:
+                            self._process_msg(msg)
+
+                    # ── Flush on batch size ────────────────────────────────────
+                    if len(self._batch) >= self.BATCH_SIZE:
+                        self._flush()
+                    # ── Flush on timer ─────────────────────────────────────────
+                    elif self._batch and (time.time() - self._last_flush) >= self.FLUSH_INTERVAL_S:
+                        self._flush()
+
+                except Exception as e:
+                    self.logger.exception("Archive loop error")
+                    time.sleep(5)
+                    try:
+                        self._reconnect_db()
+                    except Exception:
+                        pass
+
+            # ── Shutdown: final flush ──────────────────────────────────────────
+            self.logger.info("TradeMatchArchive shutting down — final flush.")
+            self._flush()
+
+        finally:
+            self._cleanup()
+            self.logger.info("TradeMatchArchive stopped.")
 
     def stop(self) -> None:
         self._stop.set()

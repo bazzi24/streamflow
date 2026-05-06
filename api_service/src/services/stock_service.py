@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
+from sqlalchemy.exc import OperationalError
 from ..models import (
     StreamingDataTrade, StreamingDataQuote, StreamingIndexData,
     SymbolDim, StockTradeFact, StockOrderBookFact, MarketIndexFact,
@@ -8,8 +9,18 @@ from ..models import (
 from ..schemas.stock import (
     StockQuote, OrderBook, OrderBookLevel, OHLCVBar, SymbolMeta,
     StockSummary, IndexOverview, MarketOverviewResponse, BidAskLevel,
-    TradeMatch,
+    TradeMatch, PaginatedStocksResponse,
 )
+from ..schemas.validators import (
+    validate_symbol,
+    validate_interval,
+    validate_limit,
+    validate_offset,
+    validate_optional_date,
+    validate_optional_exchange,
+    validate_segment,
+)
+from common.decorator import retry
 from datetime import datetime, timezone, timedelta
 import logging
 from functools import lru_cache
@@ -133,7 +144,9 @@ class StockService:
 
     # ── Quote ────────────────────────────────────────────────────────────
 
+    @retry(max_attempts=3, base_delay=0.5, max_delay=5.0, exceptions=(OperationalError,))
     def get_quote(self, symbol: str) -> StockQuote | None:
+        symbol = validate_symbol(symbol)
         # Try streaming first (most up-to-date)
         row = (
             self.streaming_db.query(StreamingDataTrade)
@@ -210,6 +223,7 @@ class StockService:
             and symbol[:2] not in _ETF_PREFIXES
         )
 
+    @retry(max_attempts=3, base_delay=0.5, max_delay=5.0, exceptions=(OperationalError,))
     def list_latest_quotes(
         self, exchange: str | None = None, segment: str | None = None
     ) -> list[StockSummary]:
@@ -224,6 +238,16 @@ class StockService:
         the previous 4-query approach, eliminating the Python-side dict joins
         and reducing RAM pressure when many symbols are loaded.
         """
+        return self._build_summaries(exchange, segment)
+
+    def _build_summaries(
+        self, exchange: str | None = None, segment: str | None = None
+    ) -> list[StockSummary]:
+        """Core query logic that builds StockSummary list. Used by both
+        list_latest_quotes (all) and list_latest_quotes_paginated (paged)."""
+        exchange = validate_optional_exchange(exchange)
+        segment = validate_segment(segment) if segment is not None else None
+
         from ..models import StreamingDataQuote, StreamingForeignRoom, DataIndexComponent
 
         # ── VN30 / HNX30: resolve index constituents ──────────────────────────
@@ -245,7 +269,6 @@ class StockService:
             logger.debug("Index %s constituents at %s: %d symbols", exchange, latest_date, len(index_symbols or []))
 
         # ── Latest trade row per symbol (deduplication) ─────────────────────
-        # Window function keeps one row per symbol regardless of INSERT ordering.
         from sqlalchemy.orm import aliased
 
         ranked = (
@@ -262,11 +285,6 @@ class StockService:
         )
         ranked_trade = aliased(StreamingDataTrade, ranked)
 
-        # ── Scalar subqueries: latest id per symbol ─────────────────────────────
-        # Defined as standalone expressions so SQLAlchemy can resolve the
-        # join direction unambiguously (avoids "multiple FROMs" ambiguity).
-        from sqlalchemy.orm import aliased as _aliased
-
         latest_quote_id = (
             self.streaming_db.query(func.max(StreamingDataQuote.id))
             .filter(StreamingDataQuote.symbol_id == ranked_trade.symbol)
@@ -280,7 +298,8 @@ class StockService:
             .scalar_subquery()
         )
 
-        # ── Build the three-way join ────────────────────────────────────────────
+        from sqlalchemy.orm import aliased as _aliased
+
         QuoteAlias = _aliased(StreamingDataQuote)
         FRAlias    = _aliased(StreamingForeignRoom)
 
@@ -297,20 +316,16 @@ class StockService:
 
         rows = base.all()
 
-        # ── Apply VN30/HNX30 symbol filter ─────────────────────────────────
         if index_symbols is not None:
             rows = [(r, q_row, f_row) for r, q_row, f_row in rows if r.symbol in index_symbols]
 
-        # ── Build StockSummary list ──────────────────────────────────────────
         summaries = []
         for trade_row, quote_row, foreign_row in rows:
             symbol = trade_row.symbol or ""
 
-            # Warrant detection
             is_warrant = self._is_warrant(symbol)
             is_etf = symbol[:2] in _ETF_PREFIXES or symbol[:5] in _ETF_PREFIXES
 
-            # Segment filter: exclude warrants from regular exchange tabs
             if segment == "WARRANT":
                 if not is_warrant:
                     continue
@@ -318,13 +333,10 @@ class StockService:
                 if not is_etf:
                     continue
             else:
-                # HOSE/HNX/UPCOM — exclude warrants
                 if is_warrant:
                     continue
 
-            # bid_ask_levels: buy-side levels only [best, 2nd, 3rd]
             bid_ask_levels: list[BidAskLevel] = []
-            # ask_levels: sell-side levels only [best, 2nd, 3rd]
             ask_levels: list[BidAskLevel] = []
 
             if quote_row:
@@ -333,24 +345,12 @@ class StockService:
                     bv = getattr(quote_row, f"bid_vol{i}", None)
                     ap = getattr(quote_row, f"ask_price{i}", None)
                     av = getattr(quote_row, f"ask_vol{i}", None)
-                    # Buy side
                     bid_ask_levels.append(
-                        BidAskLevel(
-                            bid_price=_f(bp),
-                            bid_vol=_i(bv),
-                            ask_price=0,
-                            ask_vol=0,
-                        )
+                        BidAskLevel(bid_price=_f(bp), bid_vol=_i(bv), ask_price=0, ask_vol=0)
                     )
-                    # Sell side (only if price is non-zero)
                     if ap not in (None, 0):
                         ask_levels.append(
-                            BidAskLevel(
-                                bid_price=0,
-                                bid_vol=0,
-                                ask_price=_f(ap),
-                                ask_vol=_i(av),
-                            )
+                            BidAskLevel(bid_price=0, bid_vol=0, ask_price=_f(ap), ask_vol=_i(av))
                         )
 
             best_bid_price = bid_ask_levels[0].bid_price if len(bid_ask_levels) >= 1 else 0
@@ -392,9 +392,30 @@ class StockService:
             )
         return summaries
 
+    def list_latest_quotes_paginated(
+        self, exchange: str | None = None, segment: str | None = None,
+        limit: int = 100, offset: int = 0
+    ) -> PaginatedStocksResponse:
+        """Get latest prices with pagination. Returns items + total count."""
+        limit = validate_limit(limit)
+        offset = validate_offset(offset)
+
+        all_summaries = self._build_summaries(exchange, segment)
+        total = len(all_summaries)
+        items = all_summaries[offset:offset + limit]
+
+        return PaginatedStocksResponse(
+            items=items,
+            total=total,
+            limit=limit,
+            offset=offset,
+        )
+
     # ── Order Book ──────────────────────────────────────────────────────
 
+    @retry(max_attempts=3, base_delay=0.5, max_delay=5.0, exceptions=(OperationalError,))
     def get_orderbook(self, symbol: str) -> OrderBook | None:
+        symbol = validate_symbol(symbol)
         row = (
             self.streaming_db.query(StreamingDataQuote)
             .filter(StreamingDataQuote.symbol_id == symbol)
@@ -424,6 +445,7 @@ class StockService:
 
     # ── OHLCV ──────────────────────────────────────────────────────────
 
+    @retry(max_attempts=3, base_delay=0.5, max_delay=5.0, exceptions=(OperationalError,))
     def get_ohlcv(self, symbol: str, interval: str = "5m", limit: int = 200) -> list[OHLCVBar]:
         """Intraday OHLCV — reads pre-computed 1m candles from candlestick_1m,
         derives larger intervals at query time. Falls back to streaming.data_trade
@@ -432,6 +454,10 @@ class StockService:
         Bug fix (Step 2): prior version ordered by INSERTION order (ASC id),
         returning oldest N ticks instead of the latest N.
         """
+        symbol = validate_symbol(symbol)
+        interval = validate_interval(interval)
+        limit = validate_limit(limit)
+
         # ── 1m candles from candlestick_1m (primary path) ───────────────────
         rows = (
             self.streaming_db.query(Candlestick1M)
@@ -536,10 +562,14 @@ class StockService:
 
         return sorted(bars.values(), key=lambda x: x.timestamp)
 
+    @retry(max_attempts=3, base_delay=0.5, max_delay=5.0, exceptions=(OperationalError,))
     def get_history(self, symbol: str, days: int = 30) -> list[OHLCVBar]:
         """Daily OHLCV — reads pre-computed daily candles from candlestick_1d.
         Falls back to streaming.data_trade GROUP BY if candlestick_1d is empty.
         """
+        symbol = validate_symbol(symbol)
+        days = validate_limit(days)  # reuse limit validator for days range
+
         from datetime import date as date_cls, datetime, time
 
         # ── candlestick_1d (primary path) ───────────────────────────────────
@@ -620,6 +650,7 @@ class StockService:
         """Fetch all stocks (used for top gainers/losers in market overview)."""
         return self.list_latest_quotes()
 
+    @retry(max_attempts=3, base_delay=0.5, max_delay=5.0, exceptions=(OperationalError,))
     async def get_market_overview(self) -> MarketOverviewResponse:
         from ..services.stock_cache import stock_cache
 
@@ -679,6 +710,7 @@ class StockService:
 
     # ── Trade Match Archive ────────────────────────────────────────────────
 
+    @retry(max_attempts=3, base_delay=0.5, max_delay=5.0, exceptions=(OperationalError,))
     def get_trade_matches(self, symbol: str, date: str | None = None) -> list[TradeMatch]:
         """
         Return all matched-trade rows for a symbol from data.trade_match_archive.
@@ -689,6 +721,9 @@ class StockService:
         Outside market hours, this table will be empty — the frontend will
         fall back to the live WebSocket tape automatically.
         """
+        symbol = validate_symbol(symbol)
+        date = validate_optional_date(date)
+
         query = (
             self.streaming_db.query(TradeMatchArchive)
             .filter(TradeMatchArchive.symbol == symbol)

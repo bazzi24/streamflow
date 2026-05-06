@@ -11,6 +11,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from .api.v1.router import api_router
 from .websocket.manager import ws_manager
 from .config import get_settings
+from .middleware import RequestLoggingMiddleware, RequestIdFilter
 import os
 
 settings = get_settings()
@@ -27,9 +28,13 @@ root_logger.setLevel(log_level)
 # Clear any existing handlers
 root_logger.handlers.clear()
 
-# Formatter
+# Add request ID filter to all log records
+request_id_filter = RequestIdFilter()
+root_logger.addFilter(request_id_filter)
+
+# Formatter (include request_id)
 formatter = logging.Formatter(
-    "[%(asctime)s] %(levelname)s %(name)s: %(message)s",
+    "[%(asctime)s] %(levelname)s %(name)s [req_id=%(request_id)s]: %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S"
 )
 
@@ -137,6 +142,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Request logging and structured error middleware
+app.add_middleware(RequestLoggingMiddleware)
 
 # Rate limiting middleware (if enabled)
 if settings.rate_limit_enabled:

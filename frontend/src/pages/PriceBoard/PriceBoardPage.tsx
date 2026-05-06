@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { stockApi, marketApi } from "../../api/stockApi";
@@ -401,6 +401,7 @@ export function PriceBoardPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [chartSymbol, setChartSymbol] = useState<string | null>(null);
 
+  // Compute exchange/segment from active tab
   const selectedExchange =
     activeSegment === "MY"        ? undefined :
     activeSegment === "VN30"     ? "VN30" :
@@ -415,13 +416,67 @@ export function PriceBoardPage() {
     activeSegment === "ETF" ? "ETF" :
     activeSegment === "WARRANT" ? "WARRANT" : undefined;
 
-  // ── Fetch stocks ────────────────────────────────────────────────────────────
-  const { data: stocks = [], isLoading } = useQuery({
-    queryKey: ["stocks", selectedExchange ?? "ALL", selectedSegment],
-    queryFn: () => stockApi.listStocks(selectedExchange, selectedSegment).then((r) => r.data),
+  // Pagination state
+  const [loadedOffset, setLoadedOffset] = useState(0);
+  const [accumulatedItems, setAccumulatedItems] = useState<StockSummary[]>([]);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const pageSize = 100;
+
+  // Reset accumulated data when filter changes
+  useEffect(() => {
+    setAccumulatedItems([]);
+    setLoadedOffset(0);
+  }, [activeSegment]);
+
+  // Fetch a page of stocks
+  const { data: pageData, isLoading } = useQuery({
+    queryKey: ["stocks-page", selectedExchange ?? "ALL", selectedSegment, loadedOffset],
+    queryFn: () => stockApi.listStocks(selectedExchange, selectedSegment, pageSize, loadedOffset)
+      .then((r) => r.data),
     staleTime: 15_000,
     refetchInterval: 15_000,
   });
+
+  // Accumulate pages as they arrive
+  useEffect(() => {
+    if (pageData) {
+      setAccumulatedItems(prev => {
+        // For offset 0, replace; for subsequent offsets, append
+        if (loadedOffset === 0) {
+          return pageData.items;
+        }
+        // Avoid duplicates by checking symbol
+        const existingSymbols = new Set(prev.map(s => s.symbol));
+        const newItems = pageData.items.filter(s => !existingSymbols.has(s.symbol));
+        return [...prev, ...newItems];
+      });
+    }
+  }, [pageData, loadedOffset]);
+
+  // Total count from the latest page data (or accumulated count if we've loaded all)
+  const totalCount = pageData?.total ?? accumulatedItems.length;
+
+  // Infinite scroll: IntersectionObserver
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || isLoading) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        if (entry.isIntersecting) {
+          // Check if we have more to load: accumulatedItems.length < totalCount
+          if (accumulatedItems.length < totalCount) {
+            setLoadedOffset(prev => prev + pageSize);
+          }
+        }
+      },
+      { threshold: 0.1, rootMargin: '100px' }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [isLoading, totalCount, accumulatedItems.length]);
 
   // ── Fetch market overview (indices) ────────────────────────────────────────
   const { data: overview } = useQuery({
@@ -442,7 +497,7 @@ export function PriceBoardPage() {
 
   // ── Sort & filter ────────────────────────────────────────────────────────────
   const displayedStocks = useMemo(() => {
-    let list = [...stocks];
+    let list = [...accumulatedItems];
 
     // Search filter (client-side, fast)
     if (search.trim()) {
@@ -470,7 +525,7 @@ export function PriceBoardPage() {
     });
 
     return list;
-  }, [stocks, search, sortKey, sortDir]);
+  }, [accumulatedItems, search, sortKey, sortDir]);
 
   // ── Sort handler ──────────────────────────────────────────────────────────────
   const handleSort = useCallback((key: SortKey) => {
@@ -721,6 +776,17 @@ export function PriceBoardPage() {
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* ── Infinite scroll sentinel ──────────────────────────────────────────────── */}
+      <div ref={sentinelRef} className={styles.sentinel}>
+        {isLoading && accumulatedItems.length === 0 ? (
+          <div className={styles.loadingMore}>{t("loading")}</div>
+        ) : accumulatedItems.length < totalCount && !isLoading ? (
+          <div className={styles.loadingMore}>Loading more...</div>
+        ) : accumulatedItems.length >= totalCount && accumulatedItems.length > 0 ? (
+          <div className={styles.allLoaded}>All {totalCount} symbols loaded</div>
+        ) : null}
       </div>
 
       {/* ── Chart Detail Modal ──────────────────────────────────────────── */}

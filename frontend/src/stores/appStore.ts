@@ -139,7 +139,7 @@ export const useAppStore = create<AppState>()(
     {
       name: "streamflow-store",
       partialize: (state) => ({
-        token: state.token,
+        // Intentionally exclude token - use httpOnly cookies for auth
         user: state.user,
         watchlist: state.watchlist,
         selectedSymbol: state.selectedSymbol,

@@ -12,6 +12,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl wget ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+# Create non-root user for security
+RUN groupadd -r streamflow && useradd -r -g streamflow -s /bin/bash streamflow \
+    && mkdir -p /streamflow \
+    && chown -R streamflow:streamflow /streamflow
+
 # Install uv from the official multi-stage image (no external script needed)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv  /usr/local/bin/uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uvx /usr/local/bin/uvx
@@ -43,7 +48,8 @@ RUN uv sync --frozen --no-dev
 # Production
 # ============================================================
 FROM base AS production
-USER root
+# Switch to non-root user
+USER streamflow
 WORKDIR /streamflow
 
 ENV VIRTUAL_ENV=/streamflow/.venv

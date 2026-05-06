@@ -5,8 +5,9 @@ from ...services.stock_service import StockService
 from ...services.stock_cache import stock_cache
 from ...schemas.stock import (
     StockQuote, OrderBook, OHLCVBar, SymbolMeta, StockSummary,
-    MarketOverviewResponse, TradeMatch,
+    MarketOverviewResponse, TradeMatch, PaginatedStocksResponse
 )
+from ...api.v1.deps import get_current_user
 from typing import Annotated
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
@@ -21,14 +22,14 @@ def get_stock_service(
 
 # ── Cache helpers ────────────────────────────────────────────────────────────
 
-def _cache_key(exchange: str | None, segment: str | None) -> str:
-    """Composite key so every (exchange, segment) combination is cached separately."""
-    return f"list_latest_quotes:{exchange or '_'}:{segment or '_'}"
+def _cache_key(exchange: str | None, segment: str | None, offset: int, limit: int) -> str:
+    """Composite key so every (exchange, segment, offset, limit) combination is cached separately."""
+    return f"list_latest_quotes:{exchange or '_'}:{segment or '_'}:{offset}:{limit}"
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
-@router.get("", response_model=list[StockSummary])
+@router.get("", response_model=PaginatedStocksResponse)
 async def list_stocks(
     exchange: Annotated[str | None, Query(
         description="Filter by exchange: HOSE, HNX, UPCOM, VN30, HNX30"
@@ -36,25 +37,34 @@ async def list_stocks(
     segment: Annotated[str | None, Query(
         description="Filter by segment: WARRANT, ETF"
     )] = None,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
     svc: StockService = Depends(get_stock_service),
+    user=Depends(get_current_user),
 ):
     """List all symbols with latest prices. Optionally filter by exchange or segment.
     Warrants are excluded from exchange listings unless segment=WARRANT.
 
-    Results are cached in-memory for up to 2 seconds to avoid repeated DB queries
-    on every frontend poll. Cache is invalidated on every Kafka price tick.
+    Supports pagination with limit/offset. Results are cached in-memory for up to 2 seconds.
+    Cache is invalidated on every Kafka price tick.
     """
-    key = _cache_key(exchange, segment)
+    key = _cache_key(exchange, segment, offset, limit)
     return await stock_cache.get_or_set(
         key,
-        svc.list_latest_quotes,
+        svc.list_latest_quotes_paginated,
         exchange=exchange,
         segment=segment,
+        limit=limit,
+        offset=offset,
     )
 
 
 @router.get("/{symbol}", response_model=SymbolMeta)
-def get_symbol(symbol: str, svc: StockService = Depends(get_stock_service)):
+def get_symbol(
+    symbol: str,
+    svc: StockService = Depends(get_stock_service),
+    user=Depends(get_current_user),
+):
     """Symbol metadata."""
     meta = svc.get_symbol_meta(symbol)
     if meta is None:
@@ -63,7 +73,11 @@ def get_symbol(symbol: str, svc: StockService = Depends(get_stock_service)):
 
 
 @router.get("/{symbol}/quote", response_model=StockQuote)
-def get_quote(symbol: str, svc: StockService = Depends(get_stock_service)):
+def get_quote(
+    symbol: str,
+    svc: StockService = Depends(get_stock_service),
+    user=Depends(get_current_user),
+):
     """Current price (last trade tick)."""
     quote = svc.get_quote(symbol)
     if quote is None:
@@ -72,7 +86,11 @@ def get_quote(symbol: str, svc: StockService = Depends(get_stock_service)):
 
 
 @router.get("/{symbol}/orderbook", response_model=OrderBook)
-def get_orderbook(symbol: str, svc: StockService = Depends(get_stock_service)):
+def get_orderbook(
+    symbol: str,
+    svc: StockService = Depends(get_stock_service),
+    user=Depends(get_current_user),
+):
     """Top 3 bid/ask levels (latest data)."""
     return svc.get_orderbook(symbol)
 
@@ -83,6 +101,7 @@ def get_ohlcv(
     interval: Annotated[str, Query(description="e.g. 1m, 5m, 1h, 1d")] = "5m",
     limit: Annotated[int, Query(ge=1, le=1000)] = 100,
     svc: StockService = Depends(get_stock_service),
+    user=Depends(get_current_user),
 ):
     """OHLCV bars for a given interval."""
     return svc.get_ohlcv(symbol, interval=interval, limit=limit)
@@ -93,6 +112,7 @@ def get_history(
     symbol: str,
     days: Annotated[int, Query(ge=1, le=365)] = 30,
     svc: StockService = Depends(get_stock_service),
+    user=Depends(get_current_user),
 ):
     """Daily OHLCV bars for N days."""
     return svc.get_history(symbol, days=days)
@@ -105,6 +125,7 @@ def get_trade_matches(
         description="Trading date (YYYY-MM-DD). Defaults to today (Vietnam time)."
     )] = None,
     svc: StockService = Depends(get_stock_service),
+    user=Depends(get_current_user),
 ):
     """Matched-trade archive for a symbol (one row per buy/sell match).
 

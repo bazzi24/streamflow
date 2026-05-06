@@ -185,15 +185,32 @@ Two MySQL databases — **`data`** (raw + reference + candlestick) and **`wareho
 
 | Table               | Source / Writer                | PK + Index                              |
 |---------------------|-------------------------------|------------------------------------------|
-| `data_trade`         | `market_data_trade` topic      | `PRIMARY KEY (id)`, `INDEX(symbol, trading_date)` |
-| `data_quote`         | `market_data_quote` topic       | `PRIMARY KEY (id)`, `INDEX(symbol_id, trading_date)` |
+| `data_trade`         | `market_data_trade` topic      | `PRIMARY KEY (id)`, `INDEX(symbol, trading_date)`, **`INDEX(symbol, id DESC)`**, **`INDEX(exchange, id DESC)`** |
+| `data_quote`         | `market_data_quote` topic       | `PRIMARY KEY (id)`, `INDEX(symbol_id, trading_date)`, **`INDEX(symbol_id, id DESC)`** |
 | `index_data`         | `index_data` topic             | `PRIMARY KEY (id)`, `INDEX(index_id, trading_date)` |
-| `foreign_room`        | `foreign_room_data` topic       | `PRIMARY KEY (id)`, `INDEX(symbol, trading_date)` |
+| `foreign_room`        | `foreign_room_data` topic       | `PRIMARY KEY (id)`, `INDEX(symbol, trading_date)`, **`INDEX(symbol, id DESC)`** |
 | `securities_status`   | `securities_status` topic       | `PRIMARY KEY (id)`, `INDEX(symbol_id, trading_date)` |
-| `candlestick_1m`     | CandlestickConsumer             | `PRIMARY KEY (symbol, time_start)` |
+| `candlestick_1m`     | CandlestickConsumer             | `PRIMARY KEY (symbol, time_start)`, `INDEX(symbol, time_start DESC)` |
 | `candlestick_1d`      | CandlestickConsumer             | `PRIMARY KEY (symbol, trading_date)` |
+| `indexcomponent`      | Manual load script              | `PRIMARY KEY (index_id, symbol, effective_date)`, **`INDEX(index_id, effective_date, symbol)`** |
 
 > `candlestick_1m` is the **source of truth** for 1m OHLCV; larger timeframes are derived at query time.
+
+### Performance Optimizations
+
+The `list_latest_quotes` endpoint (`GET /stocks`) uses optimized indexes to handle 300+ symbols efficiently:
+
+```sql
+-- Run these on existing databases to add performance indexes:
+docker compose exec mysql mysql -u root -p"$DB_PASSWORD" data < docker/migration_add_indexes.sql
+```
+
+Indexes added (2025-05-06):
+- `data_trade(symbol, id DESC)` — window function optimization
+- `data_trade(exchange, id DESC)` — exchange filter optimization
+- `data_quote(symbol_id, id DESC)` — latest quote lookup
+- `foreign_room(symbol, id DESC)` — foreign room lookup
+- `indexcomponent(index_id, effective_date, symbol)` — VN30/HNX30 constituent lookup
 
 ### `warehouse` — Star-schema DW
 

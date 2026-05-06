@@ -46,22 +46,19 @@ from ..config import get_settings
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
-# NOTE: candlestick_1m is a MySQL table (written by CandlestickConsumer),
-# NOT a Kafka topic. Candlestick updates are served by the MySQL poll loop
-# below, not by Kafka.
+# Kafka topics to consume
 TOPICS = [
     "market_data_trade",
     "market_data_quote",
     "index_data",
+    "candlestick_updates",  # event-driven candlestick updates from consumer
 ]
 
-CANDLESTICK_POLL_INTERVAL_SEC = 10  # how often to poll MySQL for new 1m bars
-
-# Parse streaming_db_url for pymysql candlestick poller
-_streaming_url = urlparse(settings.streaming_db_url.replace("mysql+pymysql://", "http://"))
-_STREAMING_HOST = _streaming_url.hostname or "mysql"
-_STREAMING_PORT = _streaming_url.port or 3306
-_STREAMING_DB = _streaming_url.path.lstrip("/")  # Extract DB name from URL
+# Parse streaming_db_url for pymysql candlestick poller (no longer used)
+# _streaming_url = urlparse(settings.streaming_db_url.replace("mysql+pymysql://", "http://"))
+# _STREAMING_HOST = _streaming_url.hostname or "mysql"
+# _STREAMING_PORT = _streaming_url.port or 3306
+# _STREAMING_DB = _streaming_url.path.lstrip("/")
 
 
 def _safe_float(val) -> float:
@@ -137,6 +134,8 @@ def _parse_index(content_str: str) -> IndexMessage | None:
     try:
         data = json.loads(content_str)
         index_id = data.get("IndexId", "")
+        if not index_id:
+            return None
         return {
             "type": "index_update",
             "index_id": index_id,
@@ -160,111 +159,6 @@ PARSERS: dict[str, Callable[[str], WebSocketMessage | None]] = {
     "index_data": _parse_index,
 }
 
-
-# ── MySQL candlestick polling ─────────────────────────────────────────────────
-
-def _connect_streaming_db():
-    """Create a raw pymysql connection to the data DB (for candlestick polling)."""
-    return pymysql.connect(
-        host=_STREAMING_HOST,
-        port=_STREAMING_PORT,
-        user=settings.db_user,
-        password=settings.db_password,
-        database=_STREAMING_DB,
-        charset="utf8mb4",
-        autocommit=True,
-    )
-
-
-async def _poll_candlesticks() -> None:
-    """
-    Background coroutine that polls data.candlestick_1m every CANDLESTICK_POLL_INTERVAL_SEC
-    and broadcasts only FINALISED bars via WebSocket.
-
-    A bar is "finalised" when its minute is complete (≥ 60 s old in MySQL UTC).
-    This prevents the frontend from receiving a stream of ever-changing in-progress bars.
-
-    `finalised` dict tracks which (symbol, time_start) pairs have been broadcast so each
-    bar is emitted exactly once.
-    """
-    finalised: dict[tuple[str, datetime], datetime] = {}
-    conn = None
-    consecutive_errors = 0
-    max_backoff_seconds = 30
-
-    while True:
-        try:
-            # Create persistent connection on first iteration, or reconnect if needed
-            if conn is None or not conn.open:
-                conn = _connect_streaming_db()
-                consecutive_errors = 0  # reset error count on successful connection
-                logger.info("Candlestick poller connected to streaming DB")
-
-            cur = conn.cursor()
-
-            # Only consider bars whose minute bucket is fully closed (≥ 60 s old).
-            # This avoids broadcasting in-progress bars that may still be written
-            # by the slow-flush (CandlestickConsumer writes every 60 s for recovery).
-            now_utc = datetime.utcnow()
-            cutoff = now_utc - timedelta(seconds=60)
-            cur.execute(
-                """
-                SELECT symbol, time_start, open, high, low, close, volume
-                FROM data.candlestick_1m
-                WHERE time_start <= %s
-                ORDER BY symbol, time_start
-                """,
-                (cutoff,),
-            )
-            rows = cur.fetchall()
-            cur.close()
-
-            for (symbol, time_start, open_, high, low, close, volume) in rows:
-                key = (symbol, time_start)
-                if key in finalised:
-                    # Already broadcast this completed bar.
-                    continue
-                finalised[key] = time_start
-
-                try:
-                    await ws_manager.broadcast_to_symbol(symbol, {
-                        "type": "candlestick_update",
-                        "symbol": symbol,
-                        "interval": "1m",
-                        "timestamp": int(time_start.timestamp() * 1000),
-                        "open": float(open_) if open_ is not None else 0.0,
-                        "high": float(high) if high is not None else 0.0,
-                        "low": float(low) if low is not None else 0.0,
-                        "close": float(close) if close is not None else 0.0,
-                        "volume": int(volume) if volume is not None else 0,
-                    })
-                except Exception as e:
-                    logger.warning("WS broadcast error for %s: %s", symbol, e)
-
-            # Success - sleep normal interval
-            await asyncio.sleep(CANDLESTICK_POLL_INTERVAL_SEC)
-
-        except pymysql.MySQLError as e:
-            # Connection error or query failure
-            consecutive_errors += 1
-            backoff_seconds = min(2 ** consecutive_errors, max_backoff_seconds)
-            logger.warning(
-                "Candlestick poll error (attempt %d): %s. Backing off %ds",
-                consecutive_errors, e, backoff_seconds
-            )
-            # Close broken connection so we reconnect on next iteration
-            if conn and conn.open:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
-            conn = None
-            await asyncio.sleep(backoff_seconds)
-
-        except Exception as e:
-            # Unexpected error - log and sleep normal interval
-            logger.exception("Unexpected candlestick poll error: %s", e)
-            await asyncio.sleep(CANDLESTICK_POLL_INTERVAL_SEC)
 
 
 async def kafka_bridge_loop() -> None:
@@ -293,15 +187,10 @@ async def kafka_bridge_loop() -> None:
                 consecutive_errors = 0  # reset on successful start
             except Exception as e:
                 logger.error("Failed to start Kafka consumer: %s", e)
-                # If we can't even start, retry after backoff
                 backoff = min(2 ** consecutive_errors, max_backoff_seconds)
                 await asyncio.sleep(backoff)
                 consecutive_errors += 1
                 continue
-
-            # Run MySQL candlestick poller concurrently alongside Kafka consumer.
-            poll_task = asyncio.create_task(_poll_candlesticks())
-            logger.info("Candlestick MySQL poller started (interval=%ds)", CANDLESTICK_POLL_INTERVAL_SEC)
 
             try:
                 async for msg in consumer:
@@ -310,7 +199,11 @@ async def kafka_bridge_loop() -> None:
                         raw = msg.value
                         ws_msg: WebSocketMessage | None = None
 
-                        if isinstance(raw, dict) and "Content" in raw:
+                        if topic == "candlestick_updates":
+                            # Candlestick messages are sent directly without Content wrapper
+                            if isinstance(raw, dict):
+                                ws_msg = raw
+                        elif isinstance(raw, dict) and "Content" in raw:
                             content_str = raw.get("Content", "")
                             if content_str:
                                 parser = PARSERS.get(topic)
@@ -323,7 +216,9 @@ async def kafka_bridge_loop() -> None:
                         msg_type = ws_msg.get("type", "")
                         symbol = ws_msg.get("symbol", "")
 
-                        if msg_type == "price_update" and symbol:
+                        if msg_type == "candlestick_update" and symbol:
+                            await ws_manager.broadcast_to_symbol(symbol, ws_msg)
+                        elif msg_type == "price_update" and symbol:
                             # Invalidate the /stocks cache so next poll picks up the new tick immediately.
                             await stock_cache.invalidate_all()
                             # Only broadcast to clients watching this specific symbol.
@@ -338,15 +233,9 @@ async def kafka_bridge_loop() -> None:
 
             except Exception as e:
                 logger.error("Kafka consumer loop error: %s", e)
-                # Break out to outer retry loop
                 raise
             finally:
                 await consumer.stop()
-                poll_task.cancel()
-                try:
-                    await poll_task
-                except asyncio.CancelledError:
-                    pass
                 logger.info("Kafka bridge stopped")
 
         except Exception as e:

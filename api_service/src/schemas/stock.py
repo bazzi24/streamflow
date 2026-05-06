@@ -84,6 +84,14 @@ class StockSummary(BaseModel):
     is_etf: bool = False
 
 
+class PaginatedStocksResponse(BaseModel):
+    """Paginated response for stock listings."""
+    items: list[StockSummary]
+    total: int
+    limit: int
+    offset: int
+
+
 # ── WebSocket message types ───────────────────────────────────────────────
 
 class WsTradeUpdate(BaseModel):

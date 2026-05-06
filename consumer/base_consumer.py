@@ -47,11 +47,14 @@ def connect_kafka(topic, group_id):
 
 
 def connect_db(database='data'):
+    password = os.getenv('DB_PASSWORD')
+    if password is None:
+        raise ValueError("DB_PASSWORD environment variable is required")
     return pymysql.connect(
         host=os.getenv('MYSQL_HOST', 'mysql'),
         port=int(os.getenv('MYSQL_PORT', 3306)),
         user=os.getenv('DB_USER', 'root'),
-        password=os.getenv('DB_PASSWORD', 'stream_flow'),
+        password=password,
         database=database,
         charset='utf8mb4',
         autocommit=False,

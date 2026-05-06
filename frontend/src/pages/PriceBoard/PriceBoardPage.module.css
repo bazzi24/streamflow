@@ -792,3 +792,26 @@
   transition: background-color 0.4s ease;
   /* Giữ các thuộc tính cũ của bạn */
 }
+
+/* ── Infinite Scroll Sentinel ─────────────────────────────────────────────── */
+.sentinel {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 12px;
+  min-height: 40px;
+  background: var(--bg-primary);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.loadingMore,
+.allLoaded {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.allLoaded {
+  color: var(--accent-cyan);
+}

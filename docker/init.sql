@@ -71,9 +71,7 @@ CREATE TABLE IF NOT EXISTS `data`.`indexcomponent` (
     PRIMARY KEY (index_id, symbol, effective_date),
     INDEX idx_exchange (exchange_key),
     INDEX idx_index_id (index_id),
-    CONSTRAINT fk_indexcomp_exchange
-        FOREIGN KEY (exchange_key) REFERENCES `data`.`exchange`(exchange_key)
-        ON DELETE RESTRICT ON UPDATE CASCADE
+    INDEX idx_index_id_effective_date (index_id, effective_date, symbol)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `data`.`dailyindex` (
@@ -190,7 +188,9 @@ CREATE TABLE IF NOT EXISTS `data`.`data_trade` (
     lowest             DECIMAL(20,4),
     side               VARCHAR(10),
     PRIMARY KEY (id),
-    INDEX idx_symbol_date (symbol, trading_date)
+    INDEX idx_symbol_date (symbol, trading_date),
+    INDEX idx_symbol_id_desc (symbol, id DESC),
+    INDEX idx_exchange_id_desc (exchange, id DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `data`.`data_quote` (
@@ -221,7 +221,8 @@ CREATE TABLE IF NOT EXISTS `data`.`data_quote` (
     bid_price8      DECIMAL(20,4), bid_vol8  BIGINT,
     bid_price9      DECIMAL(20,4), bid_vol9  BIGINT,
     bid_price10     DECIMAL(20,4), bid_vol10 BIGINT,
-    INDEX idx_symbol_date (symbol_id, trading_date)
+    INDEX idx_symbol_date (symbol_id, trading_date),
+    INDEX idx_symbol_id_desc (symbol_id, id DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `data`.`data_quote_archive` (
@@ -302,7 +303,8 @@ CREATE TABLE IF NOT EXISTS `data`.`foreign_room` (
     sell_val     DECIMAL(20,4),
     market_id    VARCHAR(50),
     exchange     VARCHAR(50),
-    INDEX idx_symbol_date (symbol, trading_date)
+    INDEX idx_symbol_date (symbol, trading_date),
+    INDEX idx_symbol_id_desc (symbol, id DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `data`.`securities_status` (

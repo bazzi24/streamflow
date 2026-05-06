@@ -21,6 +21,14 @@ def create_access_token(data: dict[str, Any], secret_key: str, expires_delta: ti
     return jwt.encode(to_encode, secret_key, algorithm="HS256")
 
 
+def create_refresh_token(data: dict[str, Any], secret_key: str, expires_delta: timedelta | None = None) -> str:
+    """Create a long-lived refresh token (default 7 days)."""
+    to_encode = data.copy()
+    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(days=7))
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, secret_key, algorithm="HS256")
+
+
 def decode_access_token(token: str, secret_key: str) -> dict[str, Any] | None:
     try:
         payload = jwt.decode(token, secret_key, algorithms=["HS256"])

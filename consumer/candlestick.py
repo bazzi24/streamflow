@@ -31,11 +31,11 @@ import signal
 import logging
 import threading
 import sys
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, time as dtime
 from typing import Optional
 from logging.handlers import RotatingFileHandler
 
-from kafka import KafkaConsumer
+from kafka import KafkaConsumer, KafkaProducer
 import pymysql
 
 # ── SQL ───────────────────────────────────────────────────────────────────────
@@ -68,6 +68,9 @@ UPSERT_1D = """
         nn_ban = IF(VALUES(nn_ban) > 0, VALUES(nn_ban), nn_ban),
         room   = IF(VALUES(room)   > 0, VALUES(room),   room)
 """
+
+# Kafka topic for candlestick updates (sent to WebSocket bridge)
+CANDLESTICK_KAFKA_TOPIC = "candlestick_updates"
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 
@@ -202,11 +205,14 @@ class CandleState:
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def connect_db():
+    password = os.getenv("DB_PASSWORD")
+    if password is None:
+        raise ValueError("DB_PASSWORD environment variable is required")
     return pymysql.connect(
         host=os.getenv("MYSQL_HOST", "mysql"),
         port=int(os.getenv("MYSQL_PORT", 3306)),
         user=os.getenv("DB_USER", "root"),
-        password=os.getenv("DB_PASSWORD", "stream_flow"),
+        password=password,
         database="data",
         charset="utf8mb4",
         autocommit=False,
@@ -311,6 +317,7 @@ class CandlestickConsumer(threading.Thread):
         self._conn = None
         self._cursor = None
         self._consumer = None
+        self._producer = None  # Kafka producer for candlestick updates
         self._states: dict[str, CandleState] = {}
         self._pending_1m: list[tuple] = []
         self._pending_1d: list[tuple] = []
@@ -334,6 +341,16 @@ class CandlestickConsumer(threading.Thread):
         )
         self.logger.info("Connected to Kafka broker: %s", bootstrap_servers)
 
+    def _connect_producer(self):
+        bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+        self._producer = KafkaProducer(
+            bootstrap_servers=bootstrap_servers,
+            value_serializer=lambda x: json.dumps(x).encode("utf-8"),
+            retries=3,
+            acks='all',
+        )
+        self.logger.info("Connected to Kafka producer")
+
     def _reconnect_db(self):
         try:
             self._cursor.close()
@@ -341,6 +358,66 @@ class CandlestickConsumer(threading.Thread):
         except Exception:
             pass
         self._connect_db()
+
+    def _format_1m_message(self, bar: tuple) -> dict:
+        """Convert a 1m bar tuple to WebSocket message."""
+        symbol, time_start, _, _, open_, high, low, close, volume = bar
+        return {
+            "type": "candlestick_update",
+            "symbol": symbol,
+            "interval": "1m",
+            "timestamp": int(time_start.timestamp() * 1000),
+            "open": float(open_) if open_ is not None else 0.0,
+            "high": float(high) if high is not None else 0.0,
+            "low": float(low) if low is not None else 0.0,
+            "close": float(close) if close is not None else 0.0,
+            "volume": int(volume) if volume is not None else 0,
+        }
+
+    def _format_1d_message(self, bar: tuple) -> dict:
+        """Convert a 1d bar tuple to WebSocket message."""
+        symbol, trading_date, open_, high, low, close, volume, _, _, _ = bar
+        dt = datetime.combine(trading_date, dtime(hour=9))
+        return {
+            "type": "candlestick_update",
+            "symbol": symbol,
+            "interval": "1d",
+            "timestamp": int(dt.timestamp() * 1000),
+            "open": float(open_) if open_ is not None else 0.0,
+            "high": float(high) if high is not None else 0.0,
+            "low": float(low) if low is not None else 0.0,
+            "close": float(close) if close is not None else 0.0,
+            "volume": int(volume) if volume is not None else 0,
+        }
+
+    def _cleanup(self):
+        """Ensure all resources are closed."""
+        try:
+            if self._periodic_thread and self._periodic_thread.is_alive():
+                self._stop.set()
+                self._periodic_thread.join(timeout=2)
+        except Exception:
+            pass
+        try:
+            if self._cursor:
+                self._cursor.close()
+        except Exception:
+            pass
+        try:
+            if self._conn:
+                self._conn.close()
+        except Exception:
+            pass
+        try:
+            if self._consumer:
+                self._consumer.close()
+        except Exception:
+            pass
+        try:
+            if self._producer:
+                self._producer.close()
+        except Exception:
+            pass
 
     # ── Processing ──────────────────────────────────────────────────────────────
 
@@ -519,6 +596,26 @@ class CandlestickConsumer(threading.Thread):
 
             self._conn.commit()
             self._consumer.commit()
+
+            # Publish completed bars to Kafka for WebSocket bridge
+            if self._producer:
+                # Publish 1m bars
+                for bar in self._pending_1m:
+                    try:
+                        msg = self._format_1m_message(bar)
+                        self._producer.send(CANDLESTICK_KAFKA_TOPIC, msg)
+                    except Exception as e:
+                        self.logger.warning("Failed to publish 1m bar: %s", e)
+                # Publish 1d bars
+                for bar in self._pending_1d:
+                    try:
+                        msg = self._format_1d_message(bar)
+                        self._producer.send(CANDLESTICK_KAFKA_TOPIC, msg)
+                    except Exception as e:
+                        self.logger.warning("Failed to publish 1d bar: %s", e)
+                # Ensure messages are sent before proceeding
+                self._producer.flush()
+
             self._pending_1m.clear()
             self._pending_1d.clear()
             self._last_flush = time.time()
@@ -617,66 +714,66 @@ class CandlestickConsumer(threading.Thread):
 
     def run(self):
         self.logger.info("CandlestickConsumer starting...")
-        self._connect_db()
-        self._connect_kafka()
+        try:
+            self._connect_db()
+            self._connect_kafka()
+            self._connect_producer()
 
-        # Hydrate in-memory state from DB so we don't overwrite existing bars
-        self.logger.info("Hydrating candle state from DB...")
-        self._states = _hydrate_from_db(self._conn)
-        self.logger.info("Loaded state for %d symbols.", len(self._states))
+            # Hydrate in-memory state from DB so we don't overwrite existing bars
+            self.logger.info("Hydrating candle state from DB...")
+            self._states = _hydrate_from_db(self._conn)
+            self.logger.info("Loaded state for %d symbols.", len(self._states))
 
-        # Start periodic flush thread
-        self._periodic_thread = threading.Thread(
-            target=self._periodic_flush_loop,
-            daemon=True,
-            name="CandlestickPeriodicFlush",
-        )
-        self._periodic_thread.start()
+            # Start periodic flush thread
+            self._periodic_thread = threading.Thread(
+                target=self._periodic_flush_loop,
+                daemon=True,
+                name="CandlestickPeriodicFlush",
+            )
+            self._periodic_thread.start()
 
-        while not self._stop.is_set():
-            try:
-                raw_msgs = self._consumer.poll(timeout_ms=2000, max_records=200)
-                if not raw_msgs:
-                    continue
-
-                for tp, messages in raw_msgs.items():
-                    for msg in messages:
-                        self._process_msg(msg)
-
-                # Flush if batch buffer is large enough
-                if len(self._pending_1m) + len(self._pending_1d) >= self.BATCH_SIZE:
-                    self._flush()
-
-            except Exception as e:
-                self.logger.error("Poll error: %s", e)
-                time.sleep(2)
+            while not self._stop.is_set():
                 try:
-                    self._reconnect_db()
-                except Exception:
-                    pass
+                    raw_msgs = self._consumer.poll(timeout_ms=2000, max_records=200)
+                    if not raw_msgs:
+                        continue
 
-        # ── Shutdown ─────────────────────────────────────────────────────────
-        self.logger.info("Shutdown requested. Flushing all in-flight bars...")
-        for symbol, state in self._states.items():
-            for kind, bar in state.flush_all():
-                if kind == "1m":
-                    self._pending_1m.append((
-                        bar["symbol"], bar["time_start"],
-                        bar.get("trading_date"), bar.get("time"),
-                        bar["open"], bar["high"], bar["low"], bar["close"], bar["volume"],
-                    ))
-                else:
-                    self._pending_1d.append((
-                        bar["symbol"], bar["trading_date"],
-                        bar["open"], bar["high"], bar["low"], bar["close"], bar["volume"],
-                        0, 0, 0,
-                    ))
-        self._flush()
+                    for tp, messages in raw_msgs.items():
+                        for msg in messages:
+                            self._process_msg(msg)
 
-        self._consumer.close()
-        self._cursor.close()
-        self._conn.close()
-        self.logger.info("CandlestickConsumer stopped.")
+                    # Flush if batch buffer is large enough
+                    if len(self._pending_1m) + len(self._pending_1d) >= self.BATCH_SIZE:
+                        self._flush()
+
+                except Exception as e:
+                    self.logger.exception("Poll error")
+                    time.sleep(2)
+                    try:
+                        self._reconnect_db()
+                    except Exception:
+                        pass
+
+        finally:
+            # ── Shutdown ─────────────────────────────────────────────────────────
+            self.logger.info("Shutdown requested. Flushing all in-flight bars...")
+            for symbol, state in self._states.items():
+                for kind, bar in state.flush_all():
+                    if kind == "1m":
+                        self._pending_1m.append((
+                            bar["symbol"], bar["time_start"],
+                            bar.get("trading_date"), bar.get("time"),
+                            bar["open"], bar["high"], bar["low"], bar["close"], bar["volume"],
+                        ))
+                    else:
+                        self._pending_1d.append((
+                            bar["symbol"], bar["trading_date"],
+                            bar["open"], bar["high"], bar["low"], bar["close"], bar["volume"],
+                            0, 0, 0,
+                        ))
+            self._flush()
+            self._cleanup()
+            self.logger.info("CandlestickConsumer stopped.")
 
     def stop(self):
         self._stop.set()
